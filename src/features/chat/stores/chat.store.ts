@@ -90,7 +90,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const wsService = new WebSocketService();
             
             // Set up event handlers
-            wsService.onMessageReceived = (message) => {
+            wsService.onMessageReceived = (_message) => {
             };
             
             wsService.onAIResponseStart = () => {
@@ -106,7 +106,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 finishStreaming(fullResponse);
             };
             
-            wsService.onError = (error) => {
+            wsService.onError = (_error) => {
                 set({ status: 'error' });
             };
             
