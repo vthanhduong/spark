@@ -4,7 +4,6 @@ import bgVinhYetMessageImage from '../../../assets/bg-vinhyet.svg';
 import { useChatStore } from '../stores/chat.store';
 import { useParams } from 'react-router-dom';
 import { DEFAULT_CONTEXT, SECRET_CONTEXT, SIEU_MAT_DAY_CONTEXT, VINH_YET_CONTEXT } from '../constants/context.constant';
-import { Image } from './Image';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm'
 
@@ -125,7 +124,7 @@ export const MessagePanel = () => {
         setVisible(false);
     };
     const dopamine = useParams<{ secret: string }>();
-    const encode=(s)=>[...s].map((c,i)=>String.fromCharCode(c.charCodeAt(0)^i)).join('');
+    const encode=(s: string)=>[...s].map((c,i)=>String.fromCharCode(c.charCodeAt(0)^i)).join('');
     const sk = 'dtmmcss';
     useEffect(() => {
         scrollToBottom();
@@ -243,7 +242,7 @@ export const MessagePanel = () => {
             onClick={handleClick}
             >
             <div className='max-h-screen flex-1 overflow-y-auto hide-scrollbar'>
-                <button className={`p-2 rounded-full absolute transition h-12 text-xl w-12 opacity-70 transition-all ${collapsed ? 'top-[1%] text-white bg-blue-400 hover:bg-blue-200' : 'top-[47px] text-black hover:bg-blue-400 bg-blue-200'} xl:top-[1%] end-[2%] hover:cursor-pointer z-[999]`}
+                <button className={`p-2 rounded-full absolute h-12 text-xl w-12 opacity-70 transition-all ${collapsed ? 'top-[1%] text-white bg-blue-400 hover:bg-blue-200' : 'top-[47px] text-black hover:bg-blue-400 bg-blue-200'} xl:top-[1%] end-[2%] hover:cursor-pointer z-[999]`}
                         onClick={() => setCollapsed()}
                         >⇅</button>
                 <div className='min-h-full flex flex-col gap-y-2 text-white py-4 px-2 justify-end'>
@@ -258,7 +257,6 @@ export const MessagePanel = () => {
                                  >
                                 <div className='text-lg w-full wrap-anywhere'>
                                     <ReactMarkdown remarkPlugins={[remarkGfm]} children={message.content}/>
-                                    <Image contentOrUrl={message.content} />
                                 </div>
                             </div>
                         </div>
