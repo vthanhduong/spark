@@ -26,6 +26,7 @@ export const MessagePanel = () => {
         setCollapsed,
         collapsed,
         setSecret,
+        loadMessagesFromStorage,
     } = useChatStore();
     
     const [text, setText] = useState('');
@@ -71,8 +72,8 @@ export const MessagePanel = () => {
                 .catch(err => {
                     console.error('Failed to copy text: ', err);
                 });
-        } catch {
-            
+        } catch (err) {
+            console.error(err);
         }
         setVisible(false);
     };
@@ -144,39 +145,18 @@ export const MessagePanel = () => {
         }
         
         if (dopamine.secret && encode(dopamine.secret) === sk) {
-            const secretContext = SECRET_CONTEXT + `\nBạn tên là Mỹ Linh 31 tuổi một giáo viên Toán ở một trường cấp 2 (THCS), bạn đang tương tác với ${username} 32 tuổi với tư cách vợ của ${username}, bạn và ${username} đã có con trai tên Quang 11 tuổi, một học sinh lớp 7 học ở trường bạn dạy, Quang có một người bạn thân tên Hưng cũng 11 tuổi và học lớp 7 cùng trường nhưng là học sinh do bạn chủ nhiệm. Hưng hay đến nhà bạn để học bài và chơi cùng Quang, bạn cũng hay giảng bài cho cả 2 đứa`;
-            setContext(secretContext);
+            // Set secret mode first, then load data and set context
             setSecret(true);
-            addMessage({
-                id: `system_${Date.now()}`,
-                content: 'Chồng yêu của em đi làm về rồi à? Em đang nấu ăn đây, thằng Hưng lại đến chơi với học bài cùng với nhóc Quang nhà mình nè anh.',
-                sender: 'ai',
-                timestamp: new Date(),
-            });
-            addMessage({
-                id: `system_${Date.now()}`,
-                content: 'Anh về rồi đây em yêu, hai đứa chúng nó lại cắm cúi với nhau nữa rồi, em có giảng bài cho chúng nó không?',
-                sender: 'you',
-                timestamp: new Date(),
-            });
-            addMessage({
-                id: `system_${Date.now()}`,
-                content: 'Ôi giời, Chiều đến giờ em giảng bài cho chúng nó môn Toán cho chúng nó, giờ để chúng nó chơi điện tử một chút anh ạ. Em tranh thủ nấu cơm đây này, anh vào tắm rửa rồi ra ăn cơm.',
-                sender: 'ai',
-                timestamp: new Date(),
-            });
-            addMessage({
-                id: `system_${Date.now()}`,
-                content: 'Vợ yêu giỏi quá, mà cũng tối muộn rồi, em bảo với nhóc Hưng ở lại ăn cơm với thằng Quang nhà mình luôn đi, rồi ngủ lại qua đêm. Để anh gọi báo mẹ của Hưng xin cho nó ở lại. Mà ở trên trường, em là chủ nhiệm của nhóc Hưng hả, thế còn Quang nhà mình học lớp khác hay sao?',
-                sender: 'you',
-                timestamp: new Date(),
-            });
-            addMessage({
-                id: `system_${Date.now()}`,
-                content: 'Vâng đúng rồi anh yêu, em là giáo viên chủ nhiệm của lớp Hưng, còn Quang nhà mình thì học lớp khác anh ạ, Hưng học lớp 7A1, còn Quang thì 7A4. Em biết rồi chồng yêu ạ, để em chuẩn bị bữa cơm, anh gọi cho mẹ Hưng báo đi, rồi tranh thủ tắm rửa luôn đi anh yêu.',
-                sender: 'ai',
-                timestamp: new Date(),
-            });
+            // Load messages from localStorage in secret mode
+            loadMessagesFromStorage();
+            
+            // Check if context is already saved in localStorage
+            const savedContext = localStorage.getItem('secret_chat_context');
+            if (!savedContext) {
+                // Only set default context if no context is saved
+                const secretContext = SECRET_CONTEXT + `\nBạn tên là {name} bạn đang tương tác với ${username} với tư cách vợ của anh ấy!`;
+                setContext(secretContext);
+            }
         } else {
             setSecret(false);
             if (personality === 'sieumatday') {
@@ -190,8 +170,9 @@ export const MessagePanel = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [username, personality]);
     useEffect(() => {
-        clearMessages();
+        // Only clear messages and add default message if NOT in secret mode
         if (!dopamine.secret || encode(dopamine.secret) !== sk) {
+            clearMessages();
             if (personality === 'sieumatday') {
                 addMessage({
                     id: `system_${Date.now()}`,
