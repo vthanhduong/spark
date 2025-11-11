@@ -5,8 +5,10 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
-      time: "10:00"
+      time: "10:10"
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "dependabot"
+    reviewers:
+      - "vthanhduong"
