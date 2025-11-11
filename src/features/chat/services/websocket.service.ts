@@ -20,10 +20,10 @@ export class WebSocketService {
     private messageQueue: string[] = [];
     private currentStreamingMessage: string = '';
 
-    constructor(url?: string) {
+    constructor() {
         // Use provided URL, environment variable, or fallback to production URL
         // this.url = url || import.meta.env.VITE_WS_URL || 'wss://api.marki.nytx.io.vn/ws/chat';
-        this.url = env.SOCKET_URL || url || '';
+        this.url = env.SOCKET_URL;
     }
 
     connect(): Promise<void> {

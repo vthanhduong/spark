@@ -223,7 +223,7 @@ export const MessagePanel = () => {
             onClick={handleClick}
             >
             <div className='max-h-screen flex-1 overflow-y-auto hide-scrollbar'>
-                <button className={`p-2 rounded-full absolute h-12 text-xl w-12 opacity-70 transition-all ${collapsed ? 'top-[1%] text-white bg-blue-400 hover:bg-blue-200' : 'top-[47px] text-black hover:bg-blue-400 bg-blue-200'} xl:top-[1%] end-[2%] hover:cursor-pointer z-[999]`}
+                <button className={`p-2 rounded-full absolute h-12 text-xl w-12 opacity-70 transition-all ${collapsed ? 'top-[1%] text-white bg-blue-400 hover:bg-blue-200' : 'top-[47px] text-black hover:bg-blue-400 bg-blue-200'} xl:top-[1%] end-[2%] hover:cursor-pointer z-999`}
                         onClick={() => setCollapsed()}
                         >⇅</button>
                 <div className='min-h-full flex flex-col gap-y-2 text-white py-4 px-2 justify-end'>
@@ -286,7 +286,7 @@ export const MessagePanel = () => {
         </div>
         {visible && (
                 <ul
-                className="absolute bg-gray-700 shadow-2xl shadow-y shadow-x-2xl rounded w-[192px] z-50 text-gray-200"
+                className="absolute bg-gray-700 shadow-2xl shadow-y shadow-x-2xl rounded w-48 z-50 text-gray-200"
                 style={{ top: position.y, left: position.x }}
                 >
                     <li className="px-4 py-2 hover:bg-gray-900 cursor-pointer border-b border-gray-600" onClick={() => copyToClipboard()}>Copy</li>
