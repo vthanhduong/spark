@@ -7,7 +7,7 @@ import {
   useCodeBlockToHtml,
 } from "@llm-ui/code";
 import { markdownLookBack } from "@llm-ui/markdown";
-import { useLLMOutput, type LLMOutputComponent } from "@llm-ui/react";
+import { throttleBasic, useLLMOutput, type LLMOutputComponent } from "@llm-ui/react";
 import parseHtml from "html-react-parser";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -27,6 +27,7 @@ import html from "shiki/langs/html.mjs";
 import json from "shiki/langs/json.mjs";
 import markdown from "shiki/langs/markdown.mjs";
 import bash from "shiki/langs/bash.mjs";
+import cpp from "shiki/langs/cpp.mjs";
 
 import githubDark from "shiki/themes/github-dark.mjs";
 
@@ -54,6 +55,7 @@ const highlighter = loadHighlighter(
       json,
       markdown,
       bash,
+      cpp
     ],
     themes: [githubDark],
     loadWasm: getWasm,
@@ -114,6 +116,14 @@ interface LLMMessageRendererProps {
   isStreaming?: boolean;
 }
 
+const throttle = throttleBasic({
+  readAheadChars: 10,
+  targetBufferChars: 7,
+  adjustPercentage: 0.35,
+  frameLookBackMs: 10000,
+  windowLookBackMs: 2000,
+});
+
 const LLMMessageRendererComponent = ({ content, isStreaming = false }: LLMMessageRendererProps) => {
   const { blockMatches } = useLLMOutput({
     llmOutput: content,
@@ -130,6 +140,7 @@ const LLMMessageRendererComponent = ({ content, isStreaming = false }: LLMMessag
       },
     ],
     isStreamFinished: !isStreaming,
+    throttle
   });
 
   return (

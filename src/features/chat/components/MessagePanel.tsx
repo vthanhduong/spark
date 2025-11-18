@@ -31,6 +31,7 @@ export const MessagePanel = () => {
     const [visible, setVisible] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const [localInput, setLocalInput] = useState('');
+    const [expand, setExpand] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesWrapperRef = useRef<HTMLDivElement>(null);
     const hasOverflowedRef = useRef(false);
@@ -167,9 +168,12 @@ export const MessagePanel = () => {
         if (isStreaming && !prevStreamingRef.current) {
             forceScrollRef.current = true;
         }
-        // When streaming ends, force scroll to bottom
+        // When streaming ends, force scroll to bottom and focus textarea
         if (!isStreaming && prevStreamingRef.current) {
-            setTimeout(() => scrollToBottom('smooth'), 100);
+            setTimeout(() => {
+                scrollToBottom('smooth');
+                textareaRef.current?.focus();
+            }, 100);
         }
         prevStreamingRef.current = isStreaming;
     }, [isStreaming]);
@@ -264,14 +268,16 @@ export const MessagePanel = () => {
     const handleKeyPress = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            handleSendMessage();
+            if (!isStreaming) {
+                handleSendMessage();
+            }
         }
     };
 
     return (
         <div className='w-full h-screen flex flex-col text-slate-100'>
             {/* Header Section */}
-            <div className='grid grid-cols-1 xl:grid-cols-3 backdrop-blur bg-neutral-800 border-b border-neutral-700 text-white w-full p-2'>
+            <div className='grid grid-cols-1 sm:grid-cols-2 backdrop-blur bg-neutral-800 border-b border-neutral-700 text-white w-full p-2'>
                 <div className="my-1 flex flex-row items-center">
                     <span style={{ fontFamily: 'Consolas, monospace' }} className="whitespace-pre xl:whitespace-normal">Username&nbsp;</span>
                     <input 
@@ -293,24 +299,39 @@ export const MessagePanel = () => {
                             </select>
                         </>
                     ) : (
-                        <span style={{ fontFamily: 'Consolas, monospace' }} className="text-red-800 font-bold">Secret Mode</span>
+                        <>
+                        <div className="flex flex-row justify-end w-full">
+                            <button 
+                                onClick={() => setExpand(!expand)}
+                                className="select-none overflow-hidden shrink-0 text-center transition text-black bg-green-500 disabled:bg-white hover:opacity-70 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer h-[45px] w-[45px] rounded-full"
+                            >
+                                ⇲
+                            </button>
+                        </div>
+                        </>
+
                     )}
                 </div>
-                {secret && (
+                <div className="col-span-full">
+                    <p className="text-sm font-light tracking-wide text-neutral-500">msg from vthanhduong: temporary testing environment — features are incomplete and may break spectacularly.</p>
+                </div>
+                {(secret && expand) && (
                     <div className="col-span-full">
                         <span className="whitespace-pre xl:whitespace-normal" style={{ fontFamily: 'Consolas, monospace' }}>Context&nbsp;</span>
-                        <textarea
-                            className="mt-2 rounded-3xl bg-gray-700 border border-gray-600 w-full h-[45px] focus:h-72 transition-all p-2 focus:outline-none focus:bg-gray-800 hide-scrollbar"
-                            value={tempContext}
-                            onChange={(e) => setTempContext(e.target.value)}
-                        />
-                        <button
-                            type="button"
-                            className="rounded-3xl bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 mt-2 w-full transition-colors duration-300"
-                            onClick={() => setContext(tempContext)}
-                        >
-                            Save
-                        </button>
+                        <div className="">
+                            <textarea
+                                className="mt-2 rounded-3xl bg-gray-700 border border-gray-600 w-full h-[45px] focus:h-72 transition-all p-2 focus:outline-none focus:bg-gray-800 hide-scrollbar"
+                                value={tempContext}
+                                onChange={(e) => setTempContext(e.target.value)}
+                            />
+                            <button
+                                type="button"
+                                className="rounded-3xl bg-green-600 hover:bg-green-700 cursor-pointer text-white py-2 px-4 mt-2 w-full transition-colors duration-300"
+                                onClick={() => setContext(tempContext)}
+                            >
+                                Save
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
@@ -370,30 +391,31 @@ export const MessagePanel = () => {
             {/* Context Menu */}
             {visible && (
                 <ul
-                    className="absolute bg-slate-900/95 border border-slate-700 rounded-xl w-48 z-50 text-slate-100 shadow-2xl"
+                    className="absolute bg-neutral-900/95 border border-neutral-700 rounded-xl w-48 z-50 text-slate-100 shadow-2xl"
                     style={{ top: position.y, left: position.x }}
                 >
-                    <li className="px-4 py-2 hover:bg-slate-800 cursor-pointer border-b border-slate-800/80 transition" onClick={() => copyToClipboard()}>Copy</li>
-                    <li className="px-4 py-2 hover:bg-slate-800 cursor-pointer transition" onClick={() => deleteFromSelected()}>Delete from here</li>
+                    <li className="px-4 py-2 hover:bg-neutral-800 cursor-pointer border-b border-neutral-800/80 transition" onClick={() => copyToClipboard()}>Copy</li>
+                    <li className="px-4 py-2 hover:bg-neutral-800 cursor-pointer transition" onClick={() => deleteFromSelected()}>Delete from here</li>
                 </ul>
             )}
         </div>
 
         {/* Input Section */}
-        <div className='flex items-center gap-3 p-4 backdrop-blur-sm w-full border-t border-neutral-700'>
+        <div className='flex items-end gap-3 p-4 backdrop-blur-sm w-full border-t border-neutral-700'>
             <textarea
                 ref={textareaRef}
                 rows={1}
                 value={localInput}
                 onChange={handleInputChange}
                 onKeyPress={handleKeyPress}
-                placeholder="Type your message..."
-                className="border border-slate-800/80 focus:outline-none bg-neutral-900/70 rounded-3xl px-5 py-3 w-full text-slate-100 placeholder-slate-500 resize-none min-h-12 hide-scrollbar"
+                placeholder={isStreaming ? "Please wait until the response is finished..." : "Type your message..."}
+                disabled={isStreaming}
+                className="border border-slate-800/80 focus:outline-none bg-neutral-900/70 rounded-3xl px-5 py-3 w-full text-slate-100 placeholder-slate-500 resize-none min-h-12 hide-scrollbar disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <button 
                 onClick={handleSendMessage}
-                disabled={!localInput.trim()}
-                className="select-none overflow-hidden text-center transition text-black bg-green-500 disabled:bg-white hover:opacity-70 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer h-[45px] w-[50px] rounded-full"
+                disabled={!localInput.trim() || isStreaming}
+                className="select-none overflow-hidden shrink-0 text-center transition text-black bg-green-500 disabled:bg-white hover:opacity-70 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer h-[45px] w-[45px] rounded-full"
             >
                 🠉
             </button>
