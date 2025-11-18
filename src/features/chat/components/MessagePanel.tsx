@@ -4,19 +4,15 @@ import bgVinhYetMessageImage from '../../../assets/bg-vinhyet.svg';
 import { useChatStore } from '../stores/chat.store';
 import { useParams } from 'react-router-dom';
 import { DEFAULT_CONTEXT, SECRET_CONTEXT, SIEU_MAT_DAY_CONTEXT, VINH_YET_CONTEXT } from '../constants/context.constant';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm'
+import { LLMMessageRenderer } from './LLMMessageRenderer';
 
 export const MessagePanel = () => {
     const {
         messages,
         context,
-        isConnected,
         isStreaming,
         streamingMessage,
         username,
-        connectWebSocket,
-        sendMessage,
         sendMessageSSE,
         setUsername,
         setContext,
@@ -28,8 +24,6 @@ export const MessagePanel = () => {
         collapsed,
         setSecret,
         loadMessagesFromStorage,
-        useSSE,
-        setUseSSE,
     } = useChatStore();
     
     const [text, setText] = useState('');
@@ -135,12 +129,6 @@ export const MessagePanel = () => {
     }, [messages, streamingMessage, isStreaming]);
     useEffect(() => {
         if (!initRef.current) {
-            // Enable SSE by default (you can make this configurable)
-            setUseSSE(true);
-            
-            if (!isConnected && !useSSE) {
-                connectWebSocket();
-            }
             if (!username) {
                 setUsername('anonymous');
             }
@@ -209,13 +197,7 @@ export const MessagePanel = () => {
 
     const handleSendMessage = () => {
         if (localInput.trim()) {
-            if (useSSE) {
-                // Use SSE for message streaming
-                sendMessageSSE(localInput.trim(), context);
-            } else if (isConnected) {
-                // Use WebSocket for message streaming
-                sendMessage(localInput.trim(), context);
-            }
+            sendMessageSSE(localInput.trim(), context);
             setLocalInput('');
         }
     };
@@ -241,15 +223,15 @@ export const MessagePanel = () => {
                 <div className='min-h-full flex flex-col gap-y-2 text-white py-4 px-2 justify-end'>
                     {messages.map((message, index) => (
                         <div key={index} className={`flex ${message.sender === 'you' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={message.sender === 'you' ? 'bg-blue-600 py-2 px-3 rounded-3xl w-fit' : `py-2 px-3 rounded-3xl w-fit ${personality === 'vinhyet' ? 'bg-pink-400' : 'bg-green-600'}`}
+                            <div className={message.sender === 'you' ? 'bg-blue-600 py-2 px-3 rounded-3xl w-fit max-w-[80%]' : `py-2 px-3 rounded-3xl w-fit max-w-[80%] ${personality === 'vinhyet' ? 'bg-pink-400' : 'bg-green-600'}`}
                                  onContextMenu={(e) => handleContextMenu(e, message.content, index)}
                                  onClick={handleClick}
                                  onTouchStart={(e) => handleTouchStart(e, message.content, index)}
                                  onTouchEnd={handleTouchEnd}
                                  onTouchCancel={handleTouchCancel}
                                  >
-                                <div className='text-lg w-full wrap-anywhere'>
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]} children={message.content}/>
+                                <div className='text-base w-full wrap-anywhere'>
+                                    <LLMMessageRenderer content={message.content} isStreaming={false} />
                                 </div>
                             </div>
                         </div>
@@ -269,8 +251,10 @@ export const MessagePanel = () => {
                     {/* Streaming message */}
                     {isStreaming && streamingMessage && (
                         <div className="flex justify-start">
-                            <div className={`py-2 px-3 rounded-3xl w-fit ${personality === 'vinhyet' ? 'bg-pink-400' : 'bg-green-600'}`}>
-                                <p className='text-lg'>{streamingMessage}</p>
+                            <div className={`py-2 px-3 rounded-3xl w-fit max-w-[80%] ${personality === 'vinhyet' ? 'bg-pink-400' : 'bg-green-600'}`}>
+                                <div className='text-base'>
+                                    <LLMMessageRenderer content={streamingMessage} isStreaming={true} />
+                                </div>
                             </div>
                         </div>
                     )}
@@ -283,13 +267,12 @@ export const MessagePanel = () => {
                     value={localInput}
                     onChange={(e) => setLocalInput(e.target.value)}
                     onKeyPress={handleKeyPress}
-                    placeholder={useSSE ? "Type your message (SSE)..." : (isConnected ? "Type your message..." : "Connecting...")}
-                    disabled={!useSSE && !isConnected}
+                    placeholder="Type your message..."
                     className="border focus:outline-none focus:bg-gray-800 bg-gray-700 border-gray-600 rounded-3xl px-4 py-2 w-full mr-2 text-white hide-scrollbar resize-none h-[45px]"
                 />
                 <button 
                     onClick={handleSendMessage}
-                    disabled={(!useSSE && !isConnected) || !localInput.trim()}
+                    disabled={!localInput.trim()}
                     className="transition hover:text-blue-200 text-blue-400 cursor-pointer h-[35px] w-[45.05px]"
                 >
                     <span className='text-3xl'>➹</span>

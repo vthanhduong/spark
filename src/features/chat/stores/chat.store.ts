@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import type { IMessage } from '../types/message.type';
-import { WebSocketService } from '../services/websocket.service';
 import { SSEService } from '../services/sse.service';
 
 const SECRET_MESSAGES_KEY = 'secret_chat_messages';
@@ -87,12 +86,9 @@ interface ChatStore {
     personality: string;
     status: string;
     input: string;
-    isConnected: boolean;
     isStreaming: boolean;
     streamingMessage: string;
-    webSocketService: WebSocketService | null;
     sseService: SSEService | null;
-    useSSE: boolean;
     collapsed: boolean;
     secret: boolean;
     setSecret: (secret: boolean) => void;
@@ -107,30 +103,22 @@ interface ChatStore {
     clearMessages: () => void;
     setStatus: (status: string) => void;
     setInput: (input: string) => void;
-    setIsConnected: (connected: boolean) => void;
     setIsStreaming: (streaming: boolean) => void;
-    connectWebSocket: () => Promise<void>;
-    disconnectWebSocket: () => void;
-    sendMessage: (message: string, context: string) => void;
     sendMessageSSE: (message: string, context?: string) => Promise<void>;
     setCollapsed: () => void;
     loadMessagesFromStorage: () => void;
     clearAllSecretData: () => void;
-    setUseSSE: (useSSE: boolean) => void;
 }
 export const useChatStore = create<ChatStore>((set, get) => ({
     username: '',
     messages: [],
     context: '',
     personality: 'markiai', // Default personality
-    status: 'offline',
+    status: 'connected',
     input: '',
-    isConnected: false,
     isStreaming: false,
     streamingMessage: '',
-    webSocketService: null,
     sseService: null,
-    useSSE: false,
     collapsed: true,
     secret: false,
     setSecret: (secret: boolean) => {
@@ -231,7 +219,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }),
     setStatus: (status) => set({ status }),
     setInput: (input) => set({ input }),
-    setIsConnected: (connected) => set({ isConnected: connected }),
     setIsStreaming: (streaming) => set({ isStreaming: streaming }),
     
     loadMessagesFromStorage: () => {
@@ -255,90 +242,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
     },
     
-    connectWebSocket: async () => {
-        const state = get();
-        // Prevent multiple connections
-        if (state.webSocketService || state.isConnected) {
-            return;
-        }
-        const wsService = new WebSocketService();
-            
-            // Set up event handlers
-            wsService.onMessageReceived = (message) => {
-                console.log(message);
-            };
-            
-            wsService.onAIResponseStart = () => {
-                set({ isStreaming: true, streamingMessage: '' });
-            };
-            
-            wsService.onAIResponseChunk = (_, fullMessage) => {
-                set({ streamingMessage: fullMessage });
-            };
-            
-            wsService.onAIResponseEnd = (fullResponse) => {
-                const finishStreaming = get().finishStreaming;
-                finishStreaming(fullResponse);
-            };
-            
-            wsService.onError = (error) => {
-                set({ status: 'error' });
-                console.error(error);
-            };
-            
-            try {
-                await wsService.connect();
-                set({ webSocketService: wsService, isConnected: true, status: 'connected' });
-            } catch (error) {
-                set({ status: 'error' });
-                console.error(error);
-            }
-    },
-    
-    disconnectWebSocket: () => {
-        const state = get();
-        if (state.webSocketService) {
-            state.webSocketService.disconnect();
-            set({ webSocketService: null, isConnected: false, status: 'offline' });
-        }
-    },
-    
-    sendMessage: (message: string, context?: string) => {
-        const state = get();
-        if (state.webSocketService && state.isConnected && state.username) {
-            // Add user message immediately
-            const userMessage: IMessage = {
-                id: `user_${Date.now()}`,
-                content: message,
-                sender: 'you',
-                timestamp: new Date()
-            };
-            
-            const addMessage = get().addMessage;
-            addMessage(userMessage);
-            
-            // Send to WebSocket with context
-            state.webSocketService.sendMessage(state.username, message, state.messages, context || state.context);
-            
-            // Clear input
-            set({ input: '' });
-        }
-    },
     setCollapsed: () => set({ collapsed: !get().collapsed }),
     
     clearAllSecretData: () => {
         const state = get();
         if (state.secret) {
             clearAllSecretDataFromLocalStorage();
-        }
-    },
-    
-    setUseSSE: (useSSE: boolean) => {
-        set({ useSSE });
-        // Initialize SSE service if needed
-        if (useSSE && !get().sseService) {
-            const sseService = new SSEService();
-            set({ sseService, status: 'connected', isConnected: true });
         }
     },
     

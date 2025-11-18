@@ -13,14 +13,13 @@ export const Chat = () => {
         secret,
         context,
         setContext,
-        useSSE,
     } = useChatStore();
     useEffect(() => {
         setTempContext(context);
     }, [context]);
     return (
         <div className="flex flex-col h-full w-full relative">
-            <div className={`grid grid-cols-1 xl:grid-cols-3 backdrop-blur bg-gray-900/5 text-white transition-all duration-500 absolute z-50 w-full top-0 ${collapsed ? 'max-h-[0px] opacity-0 pointer-events-none' : 'p-2 opacity-100'}`}>
+            <div className={`grid grid-cols-1 xl:grid-cols-3 backdrop-blur bg-gray-900/5 text-white transition-all duration-500 absolute z-50 w-full top-0 ${collapsed ? 'max-h-0 opacity-0 pointer-events-none' : 'p-2 opacity-100'}`}>
                     <div className="my-1 flex flex-row items-center">
                         <span style={{ fontFamily: 'Consolas, monospace' }} className="whitespace-pre xl:whitespace-normal">Username    : </span>
                         <input 
@@ -46,7 +45,7 @@ export const Chat = () => {
                         )}
                     </div>
                     <div className="my-1 flex flex-row items-center">
-                        <p><span className="whitespace-pre xl:whitespace-normal" style={{ fontFamily: 'Consolas, monospace' }}>Status      : </span><span style={{ fontFamily: 'Consolas, monospace' }} className={(status === 'offline' || status === 'disconnected') ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>{status}</span> <span className="text-xs text-gray-400">({useSSE ? 'SSE' : 'WebSocket'})</span></p>
+                        <p><span className="whitespace-pre xl:whitespace-normal" style={{ fontFamily: 'Consolas, monospace' }}>Status      : </span><span style={{ fontFamily: 'Consolas, monospace' }} className={(status === 'offline' || status === 'disconnected') ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>{status}</span></p>
                     </div>
                     {
                         secret && (

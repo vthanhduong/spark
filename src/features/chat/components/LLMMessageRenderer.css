@@ -1,0 +1,182 @@
+/* LLM UI Markdown and Code Block Styling */
+
+.llm-output {
+  width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Optimize rendering performance */
+.markdown-content,
+.code-block-container {
+  contain: layout style;
+  will-change: contents;
+}
+
+.markdown-content {
+  line-height: 1.6;
+}
+
+.markdown-content p {
+  margin: 0.5em 0;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.markdown-content h1 {
+  font-size: 1.5em;
+}
+
+.markdown-content h2 {
+  font-size: 1.3em;
+}
+
+.markdown-content h3 {
+  font-size: 1.1em;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.markdown-content li {
+  margin: 0.25em 0;
+}
+
+.markdown-content code {
+  background-color: rgba(0, 0, 0, 0.2);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.markdown-content a {
+  color: #60a5fa;
+  text-decoration: underline;
+}
+
+.markdown-content a:hover {
+  color: #93c5fd;
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid rgba(255, 255, 255, 0.3);
+  margin: 0.5em 0;
+  padding-left: 1em;
+  opacity: 0.9;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  width: 100%;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.5em;
+}
+
+.markdown-content th {
+  background-color: rgba(0, 0, 0, 0.2);
+  font-weight: 600;
+}
+
+/* Code Block Styling */
+.code-block-container {
+  position: relative;
+  margin: 0.75em 0;
+}
+
+.code-block-wrapper {
+  margin: 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.code-block-wrapper pre {
+  margin: 0 !important;
+  padding: 1em !important;
+  overflow-x: auto;
+  background-color: #1e1e1e !important;
+  border-radius: 8px;
+}
+
+.code-block-wrapper code {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9em;
+  line-height: 1.5;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* Shiki fallback styling */
+.shiki {
+  background-color: #1e1e1e !important;
+  color: #d4d4d4;
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
+.shiki code {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.9em;
+  line-height: 1.5;
+  background: transparent;
+  padding: 0;
+}
+
+/* Scrollbar styling for code blocks */
+.code-block-wrapper pre::-webkit-scrollbar,
+.shiki::-webkit-scrollbar {
+  height: 8px;
+}
+
+.code-block-wrapper pre::-webkit-scrollbar-track,
+.shiki::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.code-block-wrapper pre::-webkit-scrollbar-thumb,
+.shiki::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.code-block-wrapper pre::-webkit-scrollbar-thumb:hover,
+.shiki::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Strong and emphasis */
+.markdown-content strong {
+  font-weight: 700;
+}
+
+.markdown-content em {
+  font-style: italic;
+}
+
+/* Horizontal rule */
+.markdown-content hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  margin: 1em 0;
+}
