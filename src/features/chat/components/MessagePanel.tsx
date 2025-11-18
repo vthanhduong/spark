@@ -88,6 +88,41 @@ export const MessagePanel = () => {
         setVisible(false);
     };
 
+    const retryLastAIResponse = () => {
+        if (selectedMessageIndex === null) {
+            setVisible(false);
+            return;
+        }
+
+        // Chỉ cho phép retry response cuối cùng của AI
+        const lastAIMessageIndex = messages.length - 1;
+        if (selectedMessageIndex !== lastAIMessageIndex) {
+            setVisible(false);
+            return;
+        }
+
+        // Tìm tin nhắn user gần nhất (tin nhắn trước tin nhắn AI này)
+        const previousUserMessage = messages[selectedMessageIndex - 1];
+        if (!previousUserMessage || previousUserMessage.sender !== 'you') {
+            console.error('Cannot find previous user message');
+            setVisible(false);
+            return;
+        }
+
+        // Lưu nội dung user message
+        const userMessageContent = previousUserMessage.content;
+
+        // Xóa cả user message và AI message (xóa từ vị trí user message)
+        removeMessagesFromIndex(selectedMessageIndex - 1);
+
+        // Gửi lại tin nhắn user để gen response mới
+        setTimeout(() => {
+            sendMessageSSE(userMessageContent, context);
+        }, 100);
+
+        setVisible(false);
+    };
+
     const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
         const wrapper = messagesWrapperRef.current;
         if (wrapper) {
@@ -395,6 +430,13 @@ export const MessagePanel = () => {
                     style={{ top: position.y, left: position.x }}
                 >
                     <li className="px-4 py-2 hover:bg-neutral-800 cursor-pointer border-b border-neutral-800/80 transition" onClick={() => copyToClipboard()}>Copy</li>
+                    {/* Show Retry only for last AI message */}
+                    {selectedMessageIndex !== null && 
+                     selectedMessageIndex === messages.length - 1 && 
+                     messages[selectedMessageIndex]?.sender === 'ai' && 
+                     !isStreaming && (
+                        <li className="px-4 py-2 hover:bg-neutral-800 cursor-pointer border-b border-neutral-800/80 transition text-yellow-400" onClick={() => retryLastAIResponse()}>Retry</li>
+                    )}
                     <li className="px-4 py-2 hover:bg-neutral-800 cursor-pointer transition" onClick={() => deleteFromSelected()}>Delete from here</li>
                 </ul>
             )}
