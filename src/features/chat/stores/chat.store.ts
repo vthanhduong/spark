@@ -2,83 +2,6 @@ import { create } from 'zustand';
 import type { IMessage } from '../types/message.type';
 import { SSEService } from '../services/sse.service';
 
-const SECRET_MESSAGES_KEY = 'secret_chat_messages';
-const SECRET_USERNAME_KEY = 'secret_chat_username';
-const SECRET_CONTEXT_KEY = 'secret_chat_context';
-
-// Helper functions for localStorage
-const saveMessagesToLocalStorage = (messages: IMessage[]) => {
-    try {
-        localStorage.setItem(SECRET_MESSAGES_KEY, JSON.stringify(messages));
-    } catch (error) {
-        console.error('Failed to save messages to localStorage:', error);
-    }
-};
-
-const loadMessagesFromLocalStorage = (): IMessage[] => {
-    try {
-        const saved = localStorage.getItem(SECRET_MESSAGES_KEY);
-        if (saved) {
-            return JSON.parse(saved);
-        }
-    } catch (error) {
-        console.error('Failed to load messages from localStorage:', error);
-    }
-    return [];
-};
-
-const clearMessagesFromLocalStorage = () => {
-    try {
-        localStorage.removeItem(SECRET_MESSAGES_KEY);
-    } catch (error) {
-        console.error('Failed to clear messages from localStorage:', error);
-    }
-};
-
-const saveUsernameToLocalStorage = (username: string) => {
-    try {
-        localStorage.setItem(SECRET_USERNAME_KEY, username);
-    } catch (error) {
-        console.error('Failed to save username to localStorage:', error);
-    }
-};
-
-const loadUsernameFromLocalStorage = (): string | null => {
-    try {
-        return localStorage.getItem(SECRET_USERNAME_KEY);
-    } catch (error) {
-        console.error('Failed to load username from localStorage:', error);
-        return null;
-    }
-};
-
-const saveContextToLocalStorage = (context: string) => {
-    try {
-        localStorage.setItem(SECRET_CONTEXT_KEY, context);
-    } catch (error) {
-        console.error('Failed to save context to localStorage:', error);
-    }
-};
-
-const loadContextFromLocalStorage = (): string | null => {
-    try {
-        return localStorage.getItem(SECRET_CONTEXT_KEY);
-    } catch (error) {
-        console.error('Failed to load context from localStorage:', error);
-        return null;
-    }
-};
-
-const clearAllSecretDataFromLocalStorage = () => {
-    try {
-        localStorage.removeItem(SECRET_MESSAGES_KEY);
-        localStorage.removeItem(SECRET_USERNAME_KEY);
-        localStorage.removeItem(SECRET_CONTEXT_KEY);
-    } catch (error) {
-        console.error('Failed to clear secret data from localStorage:', error);
-    }
-};
-
 interface ChatStore {
     username: string;
     messages: IMessage[];
@@ -123,53 +46,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     secret: false,
     setSecret: (secret: boolean) => {
         set({ secret });
-        // If entering secret mode, load saved data
-        if (secret) {
-            const savedMessages = loadMessagesFromLocalStorage();
-            const savedUsername = loadUsernameFromLocalStorage();
-            const savedContext = loadContextFromLocalStorage();
-            
-            const updates: Partial<ChatStore> = {};
-            
-            if (savedMessages.length > 0) {
-                updates.messages = savedMessages;
-            }
-            
-            if (savedUsername) {
-                updates.username = savedUsername;
-            }
-            
-            if (savedContext) {
-                updates.context = savedContext;
-            }
-            
-            if (Object.keys(updates).length > 0) {
-                set(updates);
-            }
-        }
+        // No localStorage operations - just set the flag
     },
-    setUsername: (username: string) => set((state) => {
-        // Save to localStorage only in secret mode
-        if (state.secret) {
-            saveUsernameToLocalStorage(username);
-        }
-        return { username };
-    }),
+    setUsername: (username: string) => set({ username }),
     addMessage: (message: IMessage) => set((state) => {
         const newMessages = [...state.messages, message];
-        // Save to localStorage only in secret mode
-        if (state.secret) {
-            saveMessagesToLocalStorage(newMessages);
-        }
         return { messages: newMessages };
     }),
     setContext: (context) => {
         set({ context });
-        // Save to localStorage after setting, check current secret state
-        const currentState = get();
-        if (currentState.secret) {
-            saveContextToLocalStorage(context);
-        }
     },
     setPersonality: (personality) => set({ personality }),
     updateStreamingMessage: (content: string) => set({ streamingMessage: content }),
@@ -182,10 +67,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         };
         set((state) => {
             const newMessages = [...state.messages, newMessage];
-            // Save to localStorage only in secret mode
-            if (state.secret) {
-                saveMessagesToLocalStorage(newMessages);
-            }
             return { 
                 messages: newMessages,
                 isStreaming: false,
@@ -196,59 +77,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     deleteMessage: (index) => set((state) => {
         const newMessages = [...state.messages];
         newMessages.splice(index, 1);
-        // Update localStorage only in secret mode
-        if (state.secret) {
-            saveMessagesToLocalStorage(newMessages);
-        }
         return { messages: newMessages };
     }),
     removeMessagesFromIndex: (index) => set((state) => {
         const newMessages = state.messages.slice(0, index);
-        // Update localStorage only in secret mode
-        if (state.secret) {
-            saveMessagesToLocalStorage(newMessages);
-        }
         return { messages: newMessages };
     }),
-    clearMessages: () => set((state) => {
-        // Clear from localStorage only in secret mode
-        if (state.secret) {
-            clearMessagesFromLocalStorage();
-        }
-        return { messages: [] };
-    }),
+    clearMessages: () => set({ messages: [] }),
     setStatus: (status) => set({ status }),
     setInput: (input) => set({ input }),
     setIsStreaming: (streaming) => set({ isStreaming: streaming }),
     
     loadMessagesFromStorage: () => {
-        const state = get();
-        if (state.secret) {
-            const savedMessages = loadMessagesFromLocalStorage();
-            const savedUsername = loadUsernameFromLocalStorage();
-            const savedContext = loadContextFromLocalStorage();
-            
-            const updates: Partial<ChatStore> = { messages: savedMessages };
-            
-            if (savedUsername) {
-                updates.username = savedUsername;
-            }
-            
-            if (savedContext) {
-                updates.context = savedContext;
-            }
-            
-            set(updates);
-        }
+        // No localStorage operations - do nothing
     },
     
     setCollapsed: () => set({ collapsed: !get().collapsed }),
     
     clearAllSecretData: () => {
-        const state = get();
-        if (state.secret) {
-            clearAllSecretDataFromLocalStorage();
-        }
+        // No localStorage operations - do nothing
     },
     
     sendMessageSSE: async (message: string, contextOverride?: string) => {
@@ -277,11 +124,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             set({ sseService });
         }
         
-        // Set up event handlers
+        // Set up event handlers - direct updates without throttling
         let fullResponse = '';
         
         sseService.onStreamStart = () => {
             set({ isStreaming: true, streamingMessage: '' });
+            fullResponse = '';
         };
         
         sseService.onStreamChunk = (chunk: string) => {
@@ -290,6 +138,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         };
         
         sseService.onStreamEnd = (finalContent: string) => {
+            // Final update with complete content
             const finishStreaming = get().finishStreaming;
             finishStreaming(finalContent || fullResponse);
             fullResponse = '';
@@ -297,6 +146,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         
         sseService.onStreamError = (error: string) => {
             console.error('SSE error:', error);
+            
             set({ isStreaming: false, streamingMessage: '' });
             
             // Add error message

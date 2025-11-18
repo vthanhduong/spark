@@ -7,13 +7,6 @@
   word-break: break-word;
 }
 
-/* Optimize rendering performance */
-.markdown-content,
-.code-block-container {
-  contain: layout style;
-  will-change: contents;
-}
-
 .markdown-content {
   line-height: 1.6;
 }

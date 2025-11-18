@@ -2,10 +2,8 @@ import { Outlet } from 'react-router-dom'
 
 export const MainLayout = () => {
   return (
-    <div>
-        <header className="backdrop-blur-xs w-full text-white top-0 z-50 from-blue-200 to-orange-200 bg-gradient-to-r">
-        </header>
-        <div className='mx-auto h-screen border-gray-400 max-w-7xl bg-white'>
+    <div className="min-h-screen bg-neutral-800 text-slate-100">
+        <div className='mx-auto h-screen max-w-6xl w-full px-4 sm:px-6 lg:px-8'>
             <Outlet />
         </div>
     </div>

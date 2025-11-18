@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import bgMessageImage from '../../../assets/new-bg.svg';
-import bgVinhYetMessageImage from '../../../assets/bg-vinhyet.svg';
 import { useChatStore } from '../stores/chat.store';
 import { useParams } from 'react-router-dom';
 import { DEFAULT_CONTEXT, SECRET_CONTEXT, SIEU_MAT_DAY_CONTEXT, VINH_YET_CONTEXT } from '../constants/context.constant';
@@ -20,18 +18,25 @@ export const MessagePanel = () => {
         personality,
         clearMessages,
         removeMessagesFromIndex,
-        setCollapsed,
-        collapsed,
         setSecret,
-        loadMessagesFromStorage,
+        secret,
+        setPersonality,
     } = useChatStore();
-    
+    const [tempContext, setTempContext] = useState("");
+    useEffect(() => {
+        setTempContext(context);
+    }, [context]);
     const [text, setText] = useState('');
     const [selectedMessageIndex, setSelectedMessageIndex] = useState<number | null>(null);
     const [visible, setVisible] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const [localInput, setLocalInput] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesWrapperRef = useRef<HTMLDivElement>(null);
+    const hasOverflowedRef = useRef(false);
+    const forceScrollRef = useRef(false);
+    const prevStreamingRef = useRef(isStreaming);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
     const initRef = useRef(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const CONTEXT_MENU_WIDTH = 192; // Width of the context menu
@@ -82,8 +87,18 @@ export const MessagePanel = () => {
         setVisible(false);
     };
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+        const wrapper = messagesWrapperRef.current;
+        if (wrapper) {
+            requestAnimationFrame(() => {
+                wrapper.scrollTo({
+                    top: wrapper.scrollHeight,
+                    behavior,
+                });
+            });
+        } else {
+            messagesEndRef.current?.scrollIntoView({ behavior });
+        }
     };
 
     const handleTouchStart = (e: React.TouchEvent, str: string, messageIndex: number) => {
@@ -124,9 +139,52 @@ export const MessagePanel = () => {
     const dopamine = useParams<{ secret: string }>();
     const encode=(s: string)=>[...s].map((c,i)=>String.fromCharCode(c.charCodeAt(0)^i)).join('');
     const sk = 'dtmmcss';
+    
     useEffect(() => {
-        scrollToBottom();
+        const wrapper = messagesWrapperRef.current;
+        if (!wrapper) return;
+
+        const overflowDelta = wrapper.scrollHeight - wrapper.clientHeight;
+        const isOverflowing = overflowDelta > 8;
+        const distanceFromBottom = wrapper.scrollHeight - wrapper.scrollTop - wrapper.clientHeight;
+        const isNearBottom = distanceFromBottom < 150;
+        const hadOverflow = hasOverflowedRef.current;
+        const shouldForceScroll = forceScrollRef.current;
+
+        // Always scroll when streaming or when forced
+        if (shouldForceScroll || isStreaming) {
+            scrollToBottom('smooth');
+            forceScrollRef.current = false;
+        } else if (isOverflowing && (!hadOverflow || isNearBottom)) {
+            scrollToBottom('smooth');
+        }
+
+        hasOverflowedRef.current = isOverflowing;
     }, [messages, streamingMessage, isStreaming]);
+
+    useEffect(() => {
+        // When streaming starts
+        if (isStreaming && !prevStreamingRef.current) {
+            forceScrollRef.current = true;
+        }
+        // When streaming ends, force scroll to bottom
+        if (!isStreaming && prevStreamingRef.current) {
+            setTimeout(() => scrollToBottom('smooth'), 100);
+        }
+        prevStreamingRef.current = isStreaming;
+    }, [isStreaming]);
+
+    const adjustTextareaHeight = (element?: HTMLTextAreaElement | null) => {
+        const textarea = element ?? textareaRef.current;
+        if (!textarea) return;
+        const minHeight = 48;
+        const maxHeight = 240;
+        textarea.style.height = 'auto';
+        const measuredHeight = textarea.scrollHeight || minHeight;
+        const nextHeight = Math.min(Math.max(measuredHeight, minHeight), maxHeight);
+        textarea.style.height = `${nextHeight}px`;
+        textarea.style.overflowY = measuredHeight > maxHeight ? 'auto' : 'hidden';
+    };
     useEffect(() => {
         if (!initRef.current) {
             if (!username) {
@@ -139,15 +197,11 @@ export const MessagePanel = () => {
         }
         
         if (dopamine.secret && encode(dopamine.secret) === sk) {
-            // Set secret mode first, then load data and set context
+            // Set secret mode first, then set context
             setSecret(true);
-            // Load messages from localStorage in secret mode
-            loadMessagesFromStorage();
             
-            // Check if context is already saved in localStorage
-            const savedContext = localStorage.getItem('secret_chat_context');
-            if (!savedContext) {
-                // Only set default context if no context is saved
+            // Set default context for secret mode
+            if (!context) {
                 const secretContext = SECRET_CONTEXT + `\nBạn tên là {name} bạn đang tương tác với ${username} với tư cách vợ của anh ấy!`;
                 setContext(secretContext);
             }
@@ -202,6 +256,11 @@ export const MessagePanel = () => {
         }
     };
 
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setLocalInput(e.target.value);
+        adjustTextareaHeight(e.currentTarget);
+    };
+
     const handleKeyPress = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -210,40 +269,86 @@ export const MessagePanel = () => {
     };
 
     return (
-        <>
-        <div 
-            ref={containerRef}
-            className='w-full h-full flex flex-col relative select-none' style={{ backgroundSize: 'cover', backgroundImage: `linear-gradient(rgba(0,0,0,0.65), rgba(0,0,0,0.65)), url(${personality === 'vinhyet' ? bgVinhYetMessageImage : bgMessageImage})` }}
-            onClick={handleClick}
+        <div className='w-full h-screen flex flex-col text-slate-100'>
+            {/* Header Section */}
+            <div className='grid grid-cols-1 xl:grid-cols-3 backdrop-blur bg-neutral-800 border-b border-neutral-700 text-white w-full p-2'>
+                <div className="my-1 flex flex-row items-center">
+                    <span style={{ fontFamily: 'Consolas, monospace' }} className="whitespace-pre xl:whitespace-normal">Username&nbsp;</span>
+                    <input 
+                        type="text"
+                        placeholder="Enter your username"
+                        className="border focus:outline-none focus:bg-neutral-800 border-neutral-700 bg-neutral-700 rounded-3xl px-2 me-4 h-10 w-64"
+                        value={username} 
+                        onChange={(e) => {setUsername(e.target.value)}}
+                    />
+                </div>
+                <div className="my-1 flex flex-row items-center">
+                    {!secret ? (
+                        <>
+                            <span className="whitespace-pre xl:whitespace-normal" style={{ fontFamily: 'Consolas, monospace' }}>Personality&nbsp;</span>
+                            <select className="border focus:outline-none focus:bg-neutral-800 border-neutral-700 bg-neutral-700 rounded-3xl me-4 h-10 w-64" value={personality} onChange={(e) => setPersonality(e.target.value)}>
+                                <option value="markiai">Marki AI</option>
+                                <option value="vinhyet">Vinh yet</option>
+                                <option value="sieumatday">Siêu mất dạy</option>
+                            </select>
+                        </>
+                    ) : (
+                        <span style={{ fontFamily: 'Consolas, monospace' }} className="text-red-800 font-bold">Secret Mode</span>
+                    )}
+                </div>
+                {secret && (
+                    <div className="col-span-full">
+                        <span className="whitespace-pre xl:whitespace-normal" style={{ fontFamily: 'Consolas, monospace' }}>Context&nbsp;</span>
+                        <textarea
+                            className="mt-2 rounded-3xl bg-gray-700 border border-gray-600 w-full h-[45px] focus:h-72 transition-all p-2 focus:outline-none focus:bg-gray-800 hide-scrollbar"
+                            value={tempContext}
+                            onChange={(e) => setTempContext(e.target.value)}
+                        />
+                        <button
+                            type="button"
+                            className="rounded-3xl bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 mt-2 w-full transition-colors duration-300"
+                            onClick={() => setContext(tempContext)}
+                        >
+                            Save
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Messages Section */}
+            <div 
+                ref={containerRef}
+                className='flex-1 flex flex-col relative overflow-hidden'
+                onClick={handleClick}
             >
-            <div className='max-h-screen flex-1 overflow-y-auto hide-scrollbar'>
-                <button className={`p-2 rounded-full absolute h-12 text-xl w-12 opacity-70 transition-all ${collapsed ? 'top-[1%] text-white bg-blue-400 hover:bg-blue-200' : 'top-[47px] text-black hover:bg-blue-400 bg-blue-200'} xl:top-[1%] end-[2%] hover:cursor-pointer z-999`}
-                        onClick={() => setCollapsed()}
-                        >⇅</button>
-                <div className='min-h-full flex flex-col gap-y-2 text-white py-4 px-2 justify-end'>
-                    {messages.map((message, index) => (
-                        <div key={index} className={`flex ${message.sender === 'you' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={message.sender === 'you' ? 'bg-blue-600 py-2 px-3 rounded-3xl w-fit max-w-[80%]' : `py-2 px-3 rounded-3xl w-fit max-w-[80%] ${personality === 'vinhyet' ? 'bg-pink-400' : 'bg-green-600'}`}
-                                 onContextMenu={(e) => handleContextMenu(e, message.content, index)}
-                                 onClick={handleClick}
-                                 onTouchStart={(e) => handleTouchStart(e, message.content, index)}
-                                 onTouchEnd={handleTouchEnd}
-                                 onTouchCancel={handleTouchCancel}
-                                 >
-                                <div className='text-base w-full wrap-anywhere'>
-                                    <LLMMessageRenderer content={message.content} isStreaming={false} />
+                <div ref={messagesWrapperRef} className='flex-1 overflow-y-auto hide-scrollbar'>
+                    <div className='flex flex-col gap-y-6 text-slate-100 py-6 px-4 pb-6'>
+                    {messages.map((message, index) => {
+                        const isUser = message.sender === 'you';
+                        return (
+                            <div key={message.id ?? index} className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full items-end`}>
+                                <div
+                                    className={`${isUser ? ' bg-neutral-600 text-white shadow-[0_0_20px_rgba(15,23,42,0.55)] w-fit max-w-full sm:max-w-3xl ml-auto' : 'text-slate-200 w-full'} py-1 px-5 rounded-3xl`}
+                                    onContextMenu={(e) => handleContextMenu(e, message.content, index)}
+                                    onClick={handleClick}
+                                    onTouchStart={(e) => handleTouchStart(e, message.content, index)}
+                                    onTouchEnd={handleTouchEnd}
+                                    onTouchCancel={handleTouchCancel}
+                                >
+                                    <div className='text-base wrap-anywhere leading-relaxed tracking-wide'>
+                                        <LLMMessageRenderer content={message.content} isStreaming={false} />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                     {(isStreaming && !streamingMessage) && (
                         <div className="flex justify-start">
-                            <div className={`py-2 px-3 rounded-3xl w-fit flex flex-col items-center justify-center ${personality === 'vinhyet' ? 'bg-pink-400' : 'bg-green-600'}`}>
-                                <p className="invisible h-[1em]">|</p>
+                            <div className='py-2 px-3 flex flex-row items-center gap-x-2 text-slate-400'>
                                 <div className="dot-typing">
-                                <span></span>
-                                <span></span>
-                                <span></span>
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
                                 </div>
                             </div>
                         </div>
@@ -251,8 +356,8 @@ export const MessagePanel = () => {
                     {/* Streaming message */}
                     {isStreaming && streamingMessage && (
                         <div className="flex justify-start">
-                            <div className={`py-2 px-3 rounded-3xl w-fit max-w-[80%] ${personality === 'vinhyet' ? 'bg-pink-400' : 'bg-green-600'}`}>
-                                <div className='text-base'>
+                            <div className='text-slate-200 w-full py-1 px-5 rounded-3xl'>
+                                <div className='text-base leading-relaxed tracking-wide'>
                                     <LLMMessageRenderer content={streamingMessage} isStreaming={true} />
                                 </div>
                             </div>
@@ -262,32 +367,37 @@ export const MessagePanel = () => {
                 </div>
             </div>
             
-            <div className='flex justify-between items-center p-2 bg-gray-900/5 backdrop-blur'>
-                <textarea
-                    value={localInput}
-                    onChange={(e) => setLocalInput(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Type your message..."
-                    className="border focus:outline-none focus:bg-gray-800 bg-gray-700 border-gray-600 rounded-3xl px-4 py-2 w-full mr-2 text-white hide-scrollbar resize-none h-[45px]"
-                />
-                <button 
-                    onClick={handleSendMessage}
-                    disabled={!localInput.trim()}
-                    className="transition hover:text-blue-200 text-blue-400 cursor-pointer h-[35px] w-[45.05px]"
-                >
-                    <span className='text-3xl'>➹</span>
-                </button>
-            </div>
-        </div>
-        {visible && (
+            {/* Context Menu */}
+            {visible && (
                 <ul
-                className="absolute bg-gray-700 shadow-2xl shadow-y shadow-x-2xl rounded w-48 z-50 text-gray-200"
-                style={{ top: position.y, left: position.x }}
+                    className="absolute bg-slate-900/95 border border-slate-700 rounded-xl w-48 z-50 text-slate-100 shadow-2xl"
+                    style={{ top: position.y, left: position.x }}
                 >
-                    <li className="px-4 py-2 hover:bg-gray-900 cursor-pointer border-b border-gray-600" onClick={() => copyToClipboard()}>Copy</li>
-                    <li className="px-4 py-2 hover:bg-gray-900 cursor-pointer" onClick={() => deleteFromSelected()}>Delete from here</li>
+                    <li className="px-4 py-2 hover:bg-slate-800 cursor-pointer border-b border-slate-800/80 transition" onClick={() => copyToClipboard()}>Copy</li>
+                    <li className="px-4 py-2 hover:bg-slate-800 cursor-pointer transition" onClick={() => deleteFromSelected()}>Delete from here</li>
                 </ul>
-        )}
-        </>
+            )}
+        </div>
+
+        {/* Input Section */}
+        <div className='flex items-center gap-3 p-4 backdrop-blur-sm w-full border-t border-neutral-700'>
+            <textarea
+                ref={textareaRef}
+                rows={1}
+                value={localInput}
+                onChange={handleInputChange}
+                onKeyPress={handleKeyPress}
+                placeholder="Type your message..."
+                className="border border-slate-800/80 focus:outline-none bg-neutral-900/70 rounded-3xl px-5 py-3 w-full text-slate-100 placeholder-slate-500 resize-none min-h-12 hide-scrollbar"
+            />
+            <button 
+                onClick={handleSendMessage}
+                disabled={!localInput.trim()}
+                className="select-none overflow-hidden text-center transition text-black bg-green-500 disabled:bg-white hover:opacity-70 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer h-[45px] w-[50px] rounded-full"
+            >
+                🠉
+            </button>
+        </div>
+    </div>
     );
 };

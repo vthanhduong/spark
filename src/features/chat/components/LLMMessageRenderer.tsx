@@ -5,8 +5,6 @@ import {
   findPartialCodeBlock,
   loadHighlighter,
   useCodeBlockToHtml,
-  allLangs,
-  allLangsAlias,
 } from "@llm-ui/code";
 import { markdownLookBack } from "@llm-ui/markdown";
 import { useLLMOutput, type LLMOutputComponent } from "@llm-ui/react";
@@ -14,29 +12,50 @@ import parseHtml from "html-react-parser";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getHighlighterCore } from "shiki/core";
-import { bundledThemes } from "shiki/themes";
-import { bundledLanguagesInfo } from "shiki/langs";
 import getWasm from "shiki/wasm";
 import "./LLMMessageRenderer.css";
-import { useState, useMemo, memo } from "react";
+import { useState, memo } from "react";
+
+// Only load common languages to improve performance
+import javascript from "shiki/langs/javascript.mjs";
+import typescript from "shiki/langs/typescript.mjs";
+import python from "shiki/langs/python.mjs";
+import jsx from "shiki/langs/jsx.mjs";
+import tsx from "shiki/langs/tsx.mjs";
+import css from "shiki/langs/css.mjs";
+import html from "shiki/langs/html.mjs";
+import json from "shiki/langs/json.mjs";
+import markdown from "shiki/langs/markdown.mjs";
+import bash from "shiki/langs/bash.mjs";
+
+import githubDark from "shiki/themes/github-dark.mjs";
 
 // -------Step 1: Create a markdown component-------
-const MarkdownComponent: LLMOutputComponent = memo(({ blockMatch }) => {
+const MarkdownComponent: LLMOutputComponent = ({ blockMatch }) => {
   const markdown = blockMatch.output;
   return (
     <div className="markdown-content">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
     </div>
   );
-});
-MarkdownComponent.displayName = 'MarkdownComponent';
+};
 
-// -------Step 2: Create a code block component-------
+// -------Step 2: Create a code block component (optimized)-------
 const highlighter = loadHighlighter(
   getHighlighterCore({
-    langs: allLangs(bundledLanguagesInfo),
-    langAlias: allLangsAlias(bundledLanguagesInfo),
-    themes: Object.values(bundledThemes),
+    langs: [
+      javascript,
+      typescript,
+      python,
+      jsx,
+      tsx,
+      css,
+      html,
+      json,
+      markdown,
+      bash,
+    ],
+    themes: [githubDark],
     loadWasm: getWasm,
   }),
 );
@@ -45,7 +64,7 @@ const codeToHtmlOptions: CodeToHtmlOptions = {
   theme: "github-dark",
 };
 
-const CodeBlock: LLMOutputComponent = memo(({ blockMatch }) => {
+const CodeBlock: LLMOutputComponent = ({ blockMatch }) => {
   const [copied, setCopied] = useState(false);
   const { html, code } = useCodeBlockToHtml({
     markdownCodeBlock: blockMatch.output,
@@ -87,8 +106,7 @@ const CodeBlock: LLMOutputComponent = memo(({ blockMatch }) => {
       <div className="code-block-wrapper">{parseHtml(html)}</div>
     </div>
   );
-});
-CodeBlock.displayName = 'CodeBlock';
+};
 
 // -------Step 3: LLM Message Renderer Component-------
 interface LLMMessageRendererProps {
@@ -96,35 +114,33 @@ interface LLMMessageRendererProps {
   isStreaming?: boolean;
 }
 
-export const LLMMessageRenderer = memo(({ content, isStreaming = false }: LLMMessageRendererProps) => {
-  const blocks = useMemo(() => [
-    {
-      component: CodeBlock,
-      findCompleteMatch: findCompleteCodeBlock(),
-      findPartialMatch: findPartialCodeBlock(),
-      lookBack: codeBlockLookBack(),
-    },
-  ], []);
-
-  const fallbackBlock = useMemo(() => ({
-    component: MarkdownComponent,
-    lookBack: markdownLookBack(),
-  }), []);
-
+const LLMMessageRendererComponent = ({ content, isStreaming = false }: LLMMessageRendererProps) => {
   const { blockMatches } = useLLMOutput({
     llmOutput: content,
-    fallbackBlock,
-    blocks,
+    fallbackBlock: {
+      component: MarkdownComponent,
+      lookBack: markdownLookBack(),
+    },
+    blocks: [
+      {
+        component: CodeBlock,
+        findCompleteMatch: findCompleteCodeBlock(),
+        findPartialMatch: findPartialCodeBlock(),
+        lookBack: codeBlockLookBack(),
+      },
+    ],
     isStreamFinished: !isStreaming,
   });
 
   return (
-    <>
+    <div className="llm-output">
       {blockMatches.map((blockMatch, index) => {
         const Component = blockMatch.block.component;
         return <Component key={index} blockMatch={blockMatch} />;
       })}
-    </>
+    </div>
   );
-});
-LLMMessageRenderer.displayName = 'LLMMessageRenderer';
+};
+
+// Memoize to prevent unnecessary re-renders
+export const LLMMessageRenderer = memo(LLMMessageRendererComponent);
