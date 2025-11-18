@@ -17,6 +17,7 @@ export const MessagePanel = () => {
         username,
         connectWebSocket,
         sendMessage,
+        sendMessageSSE,
         setUsername,
         setContext,
         addMessage,
@@ -27,6 +28,8 @@ export const MessagePanel = () => {
         collapsed,
         setSecret,
         loadMessagesFromStorage,
+        useSSE,
+        setUseSSE,
     } = useChatStore();
     
     const [text, setText] = useState('');
@@ -132,7 +135,10 @@ export const MessagePanel = () => {
     }, [messages, streamingMessage, isStreaming]);
     useEffect(() => {
         if (!initRef.current) {
-            if (!isConnected) {
+            // Enable SSE by default (you can make this configurable)
+            setUseSSE(true);
+            
+            if (!isConnected && !useSSE) {
                 connectWebSocket();
             }
             if (!username) {
@@ -202,8 +208,14 @@ export const MessagePanel = () => {
     
 
     const handleSendMessage = () => {
-        if (localInput.trim() && isConnected) {
-            sendMessage(localInput.trim(), context);
+        if (localInput.trim()) {
+            if (useSSE) {
+                // Use SSE for message streaming
+                sendMessageSSE(localInput.trim(), context);
+            } else if (isConnected) {
+                // Use WebSocket for message streaming
+                sendMessage(localInput.trim(), context);
+            }
             setLocalInput('');
         }
     };
@@ -271,13 +283,13 @@ export const MessagePanel = () => {
                     value={localInput}
                     onChange={(e) => setLocalInput(e.target.value)}
                     onKeyPress={handleKeyPress}
-                    placeholder={isConnected ? "Type your message..." : "Connecting..."}
-                    disabled={!isConnected}
+                    placeholder={useSSE ? "Type your message (SSE)..." : (isConnected ? "Type your message..." : "Connecting...")}
+                    disabled={!useSSE && !isConnected}
                     className="border focus:outline-none focus:bg-gray-800 bg-gray-700 border-gray-600 rounded-3xl px-4 py-2 w-full mr-2 text-white hide-scrollbar resize-none h-[45px]"
                 />
                 <button 
                     onClick={handleSendMessage}
-                    disabled={!isConnected || !localInput.trim()}
+                    disabled={(!useSSE && !isConnected) || !localInput.trim()}
                     className="transition hover:text-blue-200 text-blue-400 cursor-pointer h-[35px] w-[45.05px]"
                 >
                     <span className='text-3xl'>➹</span>

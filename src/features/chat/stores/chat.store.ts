@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { IMessage } from '../types/message.type';
 import { WebSocketService } from '../services/websocket.service';
+import { SSEService } from '../services/sse.service';
 
 const SECRET_MESSAGES_KEY = 'secret_chat_messages';
 const SECRET_USERNAME_KEY = 'secret_chat_username';
@@ -90,6 +91,8 @@ interface ChatStore {
     isStreaming: boolean;
     streamingMessage: string;
     webSocketService: WebSocketService | null;
+    sseService: SSEService | null;
+    useSSE: boolean;
     collapsed: boolean;
     secret: boolean;
     setSecret: (secret: boolean) => void;
@@ -109,9 +112,11 @@ interface ChatStore {
     connectWebSocket: () => Promise<void>;
     disconnectWebSocket: () => void;
     sendMessage: (message: string, context: string) => void;
+    sendMessageSSE: (message: string, context?: string) => Promise<void>;
     setCollapsed: () => void;
     loadMessagesFromStorage: () => void;
     clearAllSecretData: () => void;
+    setUseSSE: (useSSE: boolean) => void;
 }
 export const useChatStore = create<ChatStore>((set, get) => ({
     username: '',
@@ -124,6 +129,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     isStreaming: false,
     streamingMessage: '',
     webSocketService: null,
+    sseService: null,
+    useSSE: false,
     collapsed: true,
     secret: false,
     setSecret: (secret: boolean) => {
@@ -324,5 +331,80 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (state.secret) {
             clearAllSecretDataFromLocalStorage();
         }
+    },
+    
+    setUseSSE: (useSSE: boolean) => {
+        set({ useSSE });
+        // Initialize SSE service if needed
+        if (useSSE && !get().sseService) {
+            const sseService = new SSEService();
+            set({ sseService, status: 'connected', isConnected: true });
+        }
+    },
+    
+    sendMessageSSE: async (message: string, contextOverride?: string) => {
+        const state = get();
+        
+        if (!state.username) {
+            console.error('Username is required');
+            return;
+        }
+        
+        // Add user message immediately
+        const userMessage: IMessage = {
+            id: `user_${Date.now()}`,
+            content: message,
+            sender: 'you',
+            timestamp: new Date()
+        };
+        
+        const addMessage = get().addMessage;
+        addMessage(userMessage);
+        
+        // Initialize SSE service if not exists
+        let sseService = state.sseService;
+        if (!sseService) {
+            sseService = new SSEService();
+            set({ sseService });
+        }
+        
+        // Set up event handlers
+        let fullResponse = '';
+        
+        sseService.onStreamStart = () => {
+            set({ isStreaming: true, streamingMessage: '' });
+        };
+        
+        sseService.onStreamChunk = (chunk: string) => {
+            fullResponse += chunk;
+            set({ streamingMessage: fullResponse });
+        };
+        
+        sseService.onStreamEnd = (finalContent: string) => {
+            const finishStreaming = get().finishStreaming;
+            finishStreaming(finalContent || fullResponse);
+            fullResponse = '';
+        };
+        
+        sseService.onStreamError = (error: string) => {
+            console.error('SSE error:', error);
+            set({ isStreaming: false, streamingMessage: '' });
+            
+            // Add error message
+            const errorMessage: IMessage = {
+                id: `error_${Date.now()}`,
+                content: `Error: ${error}`,
+                sender: 'ai',
+                timestamp: new Date()
+            };
+            addMessage(errorMessage);
+        };
+        
+        // Send message via SSE
+        const contextToUse = contextOverride || state.context;
+        await sseService.streamMessage(message, contextToUse, state.username, state.messages);
+        
+        // Clear input
+        set({ input: '' });
     }
 }));

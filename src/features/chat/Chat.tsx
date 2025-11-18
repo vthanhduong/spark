@@ -13,6 +13,7 @@ export const Chat = () => {
         secret,
         context,
         setContext,
+        useSSE,
     } = useChatStore();
     useEffect(() => {
         setTempContext(context);
@@ -45,7 +46,7 @@ export const Chat = () => {
                         )}
                     </div>
                     <div className="my-1 flex flex-row items-center">
-                        <p><span className="whitespace-pre xl:whitespace-normal" style={{ fontFamily: 'Consolas, monospace' }}>Status      : </span><span style={{ fontFamily: 'Consolas, monospace' }} className={(status === 'offline' || status === 'disconnected') ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>{status}</span></p>
+                        <p><span className="whitespace-pre xl:whitespace-normal" style={{ fontFamily: 'Consolas, monospace' }}>Status      : </span><span style={{ fontFamily: 'Consolas, monospace' }} className={(status === 'offline' || status === 'disconnected') ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>{status}</span> <span className="text-xs text-gray-400">({useSSE ? 'SSE' : 'WebSocket'})</span></p>
                     </div>
                     {
                         secret && (
