@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 
 import { useChatStore } from '../stores/chat.store';
 import { useSessionStore } from '../../auth/stores/session.store';
@@ -16,49 +17,37 @@ interface ContextMenuState {
 }
 
 export const MessagePanel = () => {
-	const {
-		authMode,
-		username,
-		setUsername,
-		personalities,
-		selectedPersonalityId,
-		setSelectedPersonalityId,
-		conversationDetail,
-		messages,
-		streamingMessage,
-		isStreaming,
-		sendMessage,
-		deleteMessagesFromIndex,
-		loadOlderMessages,
-		hasMoreMessages,
-		isLoadingOlderMessages,
-		contextEditorValue,
-		updateContextEditorValue,
-		updateContextOverride,
-		updateConversationPersonality,
-	} = useChatStore((state) => ({
-		authMode: state.authMode,
-		username: state.username,
-		setUsername: state.setUsername,
-		personalities: state.personalities,
-		selectedPersonalityId: state.selectedPersonalityId,
-		setSelectedPersonalityId: state.setSelectedPersonalityId,
-		conversationDetail: state.conversationDetail,
-		messages: state.messages,
-		streamingMessage: state.streamingMessage,
-		isStreaming: state.isStreaming,
-		sendMessage: state.sendMessage,
-		deleteMessagesFromIndex: state.deleteMessagesFromIndex,
-		loadOlderMessages: state.loadOlderMessages,
-		hasMoreMessages: state.hasMoreMessages,
-		isLoadingOlderMessages: state.isLoadingOlderMessages,
-		contextEditorValue: state.contextEditorValue,
-		updateContextEditorValue: state.updateContextEditorValue,
-		updateContextOverride: state.updateContextOverride,
-		updateConversationPersonality: state.updateConversationPersonality,
-	}));
+	const authMode = useChatStore((state) => state.authMode);
+	const username = useChatStore((state) => state.username);
+	const setUsername = useChatStore((state) => state.setUsername);
+	const personalities = useChatStore((state) => state.personalities);
+	const selectedPersonalitySlug = useChatStore((state) => state.selectedPersonalitySlug);
+	const setSelectedPersonalitySlug = useChatStore((state) => state.setSelectedPersonalitySlug);
+	const conversationDetail = useChatStore((state) => state.conversationDetail);
+	const messages = useChatStore((state) => state.messages);
+	const streamingMessage = useChatStore((state) => state.streamingMessage);
+	const isStreaming = useChatStore((state) => state.isStreaming);
+	const sendMessage = useChatStore((state) => state.sendMessage);
+	const deleteMessagesFromIndex = useChatStore((state) => state.deleteMessagesFromIndex);
+	const loadOlderMessages = useChatStore((state) => state.loadOlderMessages);
+	const hasMoreMessages = useChatStore((state) => state.hasMoreMessages);
+	const isLoadingOlderMessages = useChatStore((state) => state.isLoadingOlderMessages);
+	const contextEditorValue = useChatStore((state) => state.contextEditorValue);
+	const updateContextEditorValue = useChatStore((state) => state.updateContextEditorValue);
+	const updateContextOverride = useChatStore((state) => state.updateContextOverride);
+	const updateConversationPersonality = useChatStore((state) => state.updateConversationPersonality);
+	const setAuthMode = useChatStore((state) => state.setAuthMode);
+	const selectConversation = useChatStore((state) => state.selectConversation);
+	const clearMessages = useChatStore((state) => state.clearMessages);
 
-	const userRole = useSessionStore((state) => state.user?.role);
+	const sessionUser = useSessionStore((state) => state.user);
+	const sessionStatus = useSessionStore((state) => state.status);
+	const sessionError = useSessionStore((state) => state.error);
+	const login = useSessionStore((state) => state.login);
+	const logout = useSessionStore((state) => state.logout);
+	const fetchSession = useSessionStore((state) => state.fetchSession);
+
+	const userRole = sessionUser?.role;
 
 	const [inputValue, setInputValue] = useState('');
 	const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -71,17 +60,120 @@ export const MessagePanel = () => {
 	const [showContextEditor, setShowContextEditor] = useState(false);
 	const [isSavingContext, setIsSavingContext] = useState(false);
 	const [contextSaveMessage, setContextSaveMessage] = useState<string | null>(null);
+	const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
+	const [loginEmail, setLoginEmail] = useState('');
+	const [loginPassword, setLoginPassword] = useState('');
+	const [hasLoginAttempt, setHasLoginAttempt] = useState(false);
+	const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
+	const [settingsUsername, setSettingsUsername] = useState('');
+	const [settingsError, setSettingsError] = useState<string | null>(null);
+
+	const isAuthenticated = sessionStatus === 'authenticated';
+	const isSessionLoading = sessionStatus === 'loading';
+	const loginErrorMessage = sessionError;
+
+	useEffect(() => {
+		if (sessionStatus === 'idle') {
+			fetchSession().catch(() => undefined);
+		}
+	}, [sessionStatus, fetchSession]);
+
+	useEffect(() => {
+		if (isAuthenticated && sessionUser) {
+			if (authMode !== 'authenticated') {
+				setAuthMode('authenticated', sessionUser.email);
+				clearMessages();
+				void selectConversation(null);
+			}
+		} else if (sessionStatus === 'unauthenticated' && authMode !== 'guest') {
+			setAuthMode('guest');
+			clearMessages();
+			void selectConversation(null);
+		}
+	}, [authMode, isAuthenticated, sessionStatus, sessionUser, setAuthMode, clearMessages, selectConversation]);
+
+	useEffect(() => {
+		if (sessionUser?.email) {
+			setLoginEmail(sessionUser.email);
+		}
+	}, [sessionUser?.email]);
+
+	useEffect(() => {
+		if (isSettingsDialogOpen) {
+			setSettingsUsername(username);
+			setSettingsError(null);
+		}
+	}, [isSettingsDialogOpen, username]);
+
+	const handleOpenLogin = () => {
+		setLoginEmail((prev) => prev || sessionUser?.email || '');
+		setLoginPassword('');
+		setHasLoginAttempt(false);
+		setIsLoginDialogOpen(true);
+	};
+
+	const handleCloseLogin = () => {
+		setIsLoginDialogOpen(false);
+		setLoginPassword('');
+		setHasLoginAttempt(false);
+	};
+
+	const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
+		if (!loginEmail.trim() || !loginPassword) {
+			return;
+		}
+		try {
+			setHasLoginAttempt(true);
+			await login(loginEmail.trim(), loginPassword);
+			setIsLoginDialogOpen(false);
+			setLoginPassword('');
+			setHasLoginAttempt(false);
+		} catch (error) {
+			console.error('Không thể đăng nhập', error);
+		}
+	};
+
+	const handleLogout = async () => {
+		try {
+			await logout();
+		} catch (error) {
+			console.error('Không thể đăng xuất', error);
+		}
+	};
+
+	const handleOpenSettings = () => {
+		setSettingsUsername(username);
+		setSettingsError(null);
+		setIsSettingsDialogOpen(true);
+	};
+
+	const handleCloseSettings = () => {
+		setIsSettingsDialogOpen(false);
+		setSettingsError(null);
+	};
+
+	const handleSaveSettings = () => {
+		const trimmed = settingsUsername.trim();
+		if (!trimmed) {
+			setSettingsError('Tên hiển thị không được để trống.');
+			return;
+		}
+		setUsername(trimmed);
+		setIsSettingsDialogOpen(false);
+		setSettingsError(null);
+	};
 
 	const messageContainerRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const shouldStickToBottomRef = useRef(true);
 
-	const activePersonalityId = useMemo(() => {
+	const activePersonalitySlug = useMemo(() => {
 		if (conversationDetail) {
-			return conversationDetail.personality_id;
+			return conversationDetail.personality_slug;
 		}
-		return selectedPersonalityId;
-	}, [conversationDetail, selectedPersonalityId]);
+		return selectedPersonalitySlug;
+	}, [conversationDetail, selectedPersonalitySlug]);
 
 	const handleSend = async () => {
 		if (!inputValue.trim()) return;
@@ -153,13 +245,13 @@ export const MessagePanel = () => {
 	const handlePersonalityChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
 		const value = event.target.value;
 		if (conversationDetail && authMode === 'authenticated') {
-			if (value !== conversationDetail.personality_id) {
+			if (value !== conversationDetail.personality_slug) {
 				updateConversationPersonality(value).catch((error) => {
 					console.error('Không thể thay đổi personality', error);
 				});
 			}
 		} else {
-			setSelectedPersonalityId(value);
+			setSelectedPersonalitySlug(value);
 		}
 	};
 
@@ -226,23 +318,14 @@ export const MessagePanel = () => {
 	};
 
 	return (
-		<div className="flex h-full flex-col bg-neutral-900/40 text-slate-100">
+		<div className="flex h-full flex-col bg-neutral-900/40 text-slate-100 w-full">
 			<header className="border-b border-neutral-700 bg-neutral-900/70 px-4 py-3 backdrop-blur">
 				<div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
 					<div className="flex flex-wrap items-center gap-3">
 						<label className="flex items-center gap-2 text-sm text-neutral-300">
-							<span>Tên hiển thị</span>
-							<input
-								value={username}
-								onChange={(event) => setUsername(event.target.value)}
-								className="h-9 rounded-full border border-neutral-600 bg-neutral-800 px-4 text-sm text-white focus:border-green-400 focus:outline-none"
-								placeholder="Nhập tên của bạn"
-							/>
-						</label>
-						<label className="flex items-center gap-2 text-sm text-neutral-300">
 							<span>Nhân cách</span>
 							<select
-								value={activePersonalityId ?? ''}
+								value={activePersonalitySlug ?? ''}
 								onChange={handlePersonalityChange}
 								className="h-9 rounded-full border border-neutral-600 bg-neutral-800 px-3 text-sm text-white focus:border-green-400 focus:outline-none"
 							>
@@ -250,20 +333,47 @@ export const MessagePanel = () => {
 									Chọn nhân cách
 								</option>
 								{personalities.map((personality) => (
-									<option key={personality.id} value={personality.id}>
+									<option key={personality.slug} value={personality.slug}>
 										{personality.name}
 									</option>
 								))}
 							</select>
 						</label>
 					</div>
-					{conversationDetail && (
-						<div className="flex flex-wrap items-center gap-4 text-xs text-neutral-400">
-							<span>Mã hội thoại: {conversationDetail.id}</span>
-							<span>{conversationDetail.message_count} tin nhắn</span>
-							<span>Cập nhật: {new Date(conversationDetail.updated_at).toLocaleString()}</span>
-						</div>
-					)}
+					<div className="flex flex-wrap items-center gap-2 text-sm text-neutral-300">
+						<span className="text-xs text-neutral-400">
+							{isAuthenticated
+								? `Đã đăng nhập${sessionUser?.email ? `: ${sessionUser.email}` : ''}`
+								: 'Chế độ khách'}
+						</span>
+						{isAuthenticated ? (
+							<>
+								<button
+									type="button"
+									onClick={handleOpenSettings}
+									className="rounded-full border border-neutral-500 px-4 py-1 text-sm font-semibold text-neutral-100 transition hover:bg-neutral-700/60"
+								>
+									Tùy chỉnh
+								</button>
+								<button
+									type="button"
+									onClick={handleLogout}
+									className="rounded-full border border-red-400 px-4 py-1 text-sm font-semibold text-red-300 transition hover:bg-red-400/10"
+								>
+									Đăng xuất
+								</button>
+							</>
+						) : (
+							<button
+								type="button"
+								onClick={handleOpenLogin}
+								disabled={isSessionLoading}
+								className="rounded-full border border-green-400 px-4 py-1 text-sm font-semibold text-green-400 transition hover:bg-green-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								{isSessionLoading ? 'Đang kiểm tra...' : 'Đăng nhập'}
+							</button>
+						)}
+					</div>
 				</div>
 				{conversationDetail && userRole === 'quest_expert' && (
 					<div className="mt-3">
@@ -389,6 +499,132 @@ export const MessagePanel = () => {
 					</button>
 				</div>
 			</footer>
+
+			{isSettingsDialogOpen && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
+					onClick={handleCloseSettings}
+				>
+					<div
+						onClick={(event) => event.stopPropagation()}
+						className="relative w-full max-w-md rounded-2xl border border-neutral-700 bg-neutral-900/95 p-6 shadow-2xl"
+					>
+						<button
+							type="button"
+							onClick={handleCloseSettings}
+							className="absolute right-4 top-4 text-lg text-neutral-400 transition hover:text-white"
+						>
+							✕
+						</button>
+						<h2 className="text-lg font-semibold text-white">Tùy chỉnh tài khoản</h2>
+						<p className="mt-1 text-sm text-neutral-400">Cập nhật tên hiển thị khi trò chuyện.</p>
+						<form
+							className="mt-5 space-y-4"
+							onSubmit={(event) => {
+								event.preventDefault();
+								handleSaveSettings();
+							}}
+						>
+							<div className="space-y-2">
+								<label htmlFor="settings-username" className="text-sm text-neutral-300">
+									Tên hiển thị
+								</label>
+								<input
+									type="text"
+									id="settings-username"
+									value={settingsUsername}
+									onChange={(event) => {
+										setSettingsUsername(event.target.value);
+										if (settingsError) {
+											setSettingsError(null);
+										}
+									}}
+									className="w-full rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-sm text-white focus:border-green-400 focus:outline-none"
+									placeholder="Nhập tên mới của bạn"
+								/>
+								{settingsError && <p className="text-xs text-red-400">{settingsError}</p>}
+							</div>
+							<div className="flex items-center justify-end gap-3">
+								<button
+									type="button"
+									onClick={handleCloseSettings}
+									className="rounded-full border border-neutral-600 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-800/70"
+								>
+									Hủy
+								</button>
+								<button
+									type="submit"
+									className="rounded-full bg-green-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-green-400"
+								>
+									Lưu
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
+
+			{isLoginDialogOpen && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
+					onClick={handleCloseLogin}
+				>
+					<div
+						onClick={(event) => event.stopPropagation()}
+						className="relative w-full max-w-md rounded-2xl border border-neutral-700 bg-neutral-900/95 p-6 shadow-2xl"
+					>
+						<button
+							type="button"
+							onClick={handleCloseLogin}
+							className="absolute right-4 top-4 text-lg text-neutral-400 transition hover:text-white"
+						>
+							✕
+						</button>
+						<h2 className="text-lg font-semibold text-white">Đăng nhập</h2>
+						<p className="mt-1 text-sm text-neutral-400">
+							Hãy đăng nhập để lưu trữ hội thoại và đồng bộ giữa các thiết bị.
+						</p>
+						<form className="mt-5 space-y-4" onSubmit={handleLoginSubmit}>
+							<div className="space-y-2">
+								<label htmlFor="login-email" className="text-sm text-neutral-300">
+									Email
+								</label>
+								<input
+									type="email"
+									id="login-email"
+									value={loginEmail}
+									onChange={(event) => setLoginEmail(event.target.value)}
+									required
+									className="w-full rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-sm text-white focus:border-green-400 focus:outline-none"
+								/>
+							</div>
+							<div className="space-y-2">
+								<label htmlFor="login-password" className="text-sm text-neutral-300">
+									Mật khẩu
+								</label>
+								<input
+									type="password"
+									id="login-password"
+									value={loginPassword}
+									onChange={(event) => setLoginPassword(event.target.value)}
+									required
+									className="w-full rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-sm text-white focus:border-green-400 focus:outline-none"
+								/>
+							</div>
+							<button
+								type="submit"
+								disabled={isSessionLoading}
+								className="w-full rounded-full bg-green-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-green-400 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								{isSessionLoading ? 'Đang xử lý...' : 'Đăng nhập'}
+							</button>
+						</form>
+						{hasLoginAttempt && loginErrorMessage && (
+							<p className="mt-3 text-sm text-red-400">{loginErrorMessage}</p>
+						)}
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };

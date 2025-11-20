@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
 import { useChatStore } from '../stores/chat.store';
 
@@ -23,14 +23,12 @@ export const ConversationSidebar = () => {
   const fetchConversations = useChatStore((state) => state.fetchConversations);
   const selectConversation = useChatStore((state) => state.selectConversation);
   const selectedConversationId = useChatStore((state) => state.selectedConversationId);
-
-  const initializedRef = useRef(false);
+  const authMode = useChatStore((state) => state.authMode);
 
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
+    if (authMode !== 'authenticated') return;
     fetchConversations(true);
-  }, [fetchConversations]);
+  }, [authMode, fetchConversations]);
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
     const target = event.currentTarget;
@@ -46,7 +44,7 @@ export const ConversationSidebar = () => {
       <div className="flex items-center justify-between border-b border-neutral-700 px-4 py-3">
         <div>
           <h2 className="text-lg font-semibold text-white">Hội thoại</h2>
-          <p className="text-xs text-neutral-400">Tối đa 20 hội thoại mỗi lần tải</p>
+          <p className="text-xs text-neutral-400">Danh sách hội thoại của bạn!</p>
         </div>
         <button
           type="button"
@@ -67,7 +65,7 @@ export const ConversationSidebar = () => {
               key={conversation.id}
               type="button"
               onClick={() => selectConversation(conversation.id)}
-              className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+              className={`w-full rounded-xl border px-3 py-3 text-left transition cursor-pointer ${
                 isSelected
                   ? 'border-green-400 bg-green-400/10 text-white'
                   : 'border-transparent bg-neutral-800/60 text-neutral-200 hover:border-neutral-600'
@@ -77,14 +75,6 @@ export const ConversationSidebar = () => {
                 <span>{conversation.title}</span>
                 <span className="text-xs text-neutral-400">{formatUpdatedAt(conversation.updated_at)}</span>
               </div>
-              <div className="mt-1 text-xs uppercase tracking-wide text-green-300">
-                {conversation.personality_name}
-              </div>
-              {conversation.last_message_preview && (
-                <p className="mt-2 line-clamp-2 text-sm text-neutral-300">
-                  {conversation.last_message_preview}
-                </p>
-              )}
             </button>
           );
         })}

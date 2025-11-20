@@ -1,24 +1,15 @@
 import { create } from 'zustand';
 
 import { apiFetch, apiJson } from '../../../lib/api';
+import { DEFAULT_PERSONALITY_SLUG, PERSONALITY_OPTIONS, type PersonalityOption } from '../constants/personalities';
 import { SSEService } from '../services/sse.service';
 import type { SSEEndEvent, SSEStartEvent } from '../services/sse.service';
 
 export type AuthMode = 'guest' | 'authenticated';
 
-export interface Personality {
-    id: string;
-    slug: string;
-    name: string;
-    description: string;
-    prompt: string;
-    greeting: string;
-}
-
 export interface ConversationSummary {
     id: string;
     title: string;
-    personality_id: string;
     personality_slug: string;
     personality_name: string;
     last_message_preview: string | null;
@@ -30,7 +21,6 @@ export interface ConversationSummary {
 export interface ConversationDetail {
     id: string;
     title: string;
-    personality_id: string;
     personality_slug: string;
     personality_name: string;
     last_message_preview: string | null;
@@ -70,8 +60,8 @@ interface ConversationListResponse {
 interface ChatStoreState {
     authMode: AuthMode;
     username: string;
-    personalities: Personality[];
-    selectedPersonalityId: string | null;
+    personalities: PersonalityOption[];
+    selectedPersonalitySlug: string;
     conversations: ConversationSummary[];
     hasMoreConversations: boolean;
     conversationSkip: number;
@@ -91,7 +81,7 @@ interface ChatStoreState {
     initialize: () => Promise<void>;
     setAuthMode: (mode: AuthMode, defaultUsername?: string) => void;
     setUsername: (username: string) => void;
-    setSelectedPersonalityId: (personalityId: string) => void;
+    setSelectedPersonalitySlug: (personalitySlug: string) => void;
     fetchConversations: (reset?: boolean) => Promise<void>;
     selectConversation: (conversationId: string | null) => Promise<void>;
     loadOlderMessages: () => Promise<void>;
@@ -118,7 +108,6 @@ function detailToSummary(detail: ConversationDetail): ConversationSummary {
     return {
         id: detail.id,
         title: detail.title,
-        personality_id: detail.personality_id,
         personality_slug: detail.personality_slug,
         personality_name: detail.personality_name,
         last_message_preview: detail.last_message_preview,
@@ -131,8 +120,8 @@ function detailToSummary(detail: ConversationDetail): ConversationSummary {
 export const useChatStore = create<ChatStoreState>((set, get) => ({
     authMode: 'guest',
     username: 'Anonymous',
-    personalities: [],
-    selectedPersonalityId: null,
+    personalities: PERSONALITY_OPTIONS,
+    selectedPersonalitySlug: DEFAULT_PERSONALITY_SLUG,
     conversations: [],
     hasMoreConversations: false,
     conversationSkip: 0,
@@ -151,18 +140,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     pendingUserMessageTempId: null,
 
     initialize: async () => {
-        if (get().personalities.length) return;
-        try {
-            const personalities = await apiJson<Personality[]>('/api/personalities');
-            const defaultPersonality =
-                personalities.find((item) => item.slug === 'markiai') || personalities[0];
-            set({
-                personalities,
-                selectedPersonalityId: defaultPersonality ? defaultPersonality.id : null,
-            });
-        } catch (error) {
-            console.error('Không thể tải danh sách personality', error);
-        }
+        // Personalities are static constants; no remote initialization required.
+        return;
     },
 
     setAuthMode: (mode, defaultUsername) => {
@@ -184,12 +163,12 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
                 conversationSkip: 0,
                 selectedConversationId: null,
                 conversationDetail: null,
-                contextEditorValue: '',
                 messages: [],
                 hasMoreMessages: false,
                 nextMessageCursor: null,
                 isStreaming: false,
                 streamingMessage: '',
+                selectedPersonalitySlug: DEFAULT_PERSONALITY_SLUG,
             });
         } else {
             set({
@@ -203,8 +182,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         set({ username });
     },
 
-    setSelectedPersonalityId: (personalityId) => {
-        set({ selectedPersonalityId: personalityId });
+    setSelectedPersonalitySlug: (personalitySlug) => {
+        set({ selectedPersonalitySlug: personalitySlug });
     },
 
     fetchConversations: async (reset = false) => {
@@ -241,6 +220,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
                 nextMessageCursor: null,
                 streamingMessage: '',
                 isStreaming: false,
+                selectedPersonalitySlug: DEFAULT_PERSONALITY_SLUG,
             });
             return;
         }
@@ -267,6 +247,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
                 hasMoreMessages: messagesResponse.has_more,
                 nextMessageCursor: messagesResponse.next_cursor,
                 isLoadingMessages: false,
+                selectedPersonalitySlug: detail.personality_slug || DEFAULT_PERSONALITY_SLUG,
             });
         } catch (error) {
             console.error('Không thể tải hội thoại', error);
@@ -312,13 +293,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         const state = get();
         if (state.isStreaming) return;
 
-        const personalities = state.personalities;
-        let personalityId = state.selectedPersonalityId;
-        if (!personalityId && personalities.length > 0) {
-            personalityId = personalities[0].id;
-        }
+        const personalitySlug = state.selectedPersonalitySlug || DEFAULT_PERSONALITY_SLUG;
 
-        if (state.authMode === 'guest' && !personalityId) {
+        if (state.authMode === 'guest' && !personalitySlug) {
             throw new Error('Vui lòng chọn nhân cách cho cuộc trò chuyện.');
         }
 
@@ -418,7 +395,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         await service.streamMessage({
             message: trimmed,
             username: state.username || 'Anonymous',
-            personalityId: state.selectedConversationId ? undefined : personalityId || undefined,
+            personalitySlug,
             conversationId: state.selectedConversationId || undefined,
             messageHistory,
         });
@@ -481,7 +458,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
                     body: JSON.stringify({ context: state.contextEditorValue }),
                 }
             );
-            set({ conversationDetail: detail, contextEditorValue: detail.context_override ?? '' });
+            set({
+                conversationDetail: detail,
+                contextEditorValue: detail.context_override ?? '',
+                selectedPersonalitySlug: detail.personality_slug || DEFAULT_PERSONALITY_SLUG,
+            });
             await get().refreshConversationMetadata(detail.id);
         } catch (error) {
             console.error('Không thể cập nhật context', error);
@@ -489,15 +470,15 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         }
     },
 
-    updateConversationPersonality: async (personalityId: string) => {
+    updateConversationPersonality: async (personalitySlug: string) => {
         const state = get();
         if (state.authMode !== 'authenticated') {
-            set({ selectedPersonalityId: personalityId });
+            set({ selectedPersonalitySlug: personalitySlug });
             return;
         }
 
         if (!state.selectedConversationId) {
-            set({ selectedPersonalityId: personalityId });
+            set({ selectedPersonalitySlug: personalitySlug });
             return;
         }
 
@@ -506,10 +487,14 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
                 `/api/conversations/${state.selectedConversationId}`,
                 {
                     method: 'PATCH',
-                    body: JSON.stringify({ personality_id: personalityId }),
+                    body: JSON.stringify({ personality_slug: personalitySlug }),
                 }
             );
-            set({ conversationDetail: detail, contextEditorValue: detail.context_override ?? '' });
+            set({
+                conversationDetail: detail,
+                contextEditorValue: detail.context_override ?? '',
+                selectedPersonalitySlug: detail.personality_slug,
+            });
             await get().refreshConversationMetadata(detail.id);
         } catch (error) {
             console.error('Không thể cập nhật personality', error);
@@ -521,14 +506,19 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         if (get().authMode !== 'authenticated') return;
         try {
             const detail = await apiJson<ConversationDetail>(`/api/conversations/${conversationId}`);
-            set((state) => ({
-                conversationDetail:
-                    state.selectedConversationId === conversationId ? detail : state.conversationDetail,
-                conversations: state.conversations
-                    .filter((item) => item.id !== conversationId)
-                    .concat(detailToSummary(detail))
-                    .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
-            }));
+            set((state) => {
+                const isActive = state.selectedConversationId === conversationId;
+                return {
+                    conversationDetail: isActive ? detail : state.conversationDetail,
+                    selectedPersonalitySlug: isActive
+                        ? detail.personality_slug || DEFAULT_PERSONALITY_SLUG
+                        : state.selectedPersonalitySlug,
+                    conversations: state.conversations
+                        .filter((item) => item.id !== conversationId)
+                        .concat(detailToSummary(detail))
+                        .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
+                };
+            });
         } catch (error) {
             console.error('Không thể đồng bộ hội thoại', error);
         }
@@ -550,6 +540,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
             nextMessageCursor: null,
             isStreaming: false,
             streamingMessage: '',
+            selectedPersonalitySlug: DEFAULT_PERSONALITY_SLUG,
         });
     },
 }));

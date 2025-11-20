@@ -3,7 +3,7 @@ import { env } from '../../../configs/environment';
 export interface StreamOptions {
     message: string;
     username?: string;
-    personalityId?: string;
+    personalitySlug?: string;
     conversationId?: string;
     messageHistory?: Array<{ sender: string; content: string }>;
 }
@@ -43,14 +43,14 @@ export class SSEService {
     }
 
     async streamMessage(options: StreamOptions): Promise<void> {
-        const { message, username, personalityId, conversationId, messageHistory } = options;
+        const { message, username, personalitySlug, conversationId, messageHistory } = options;
 
         this.cancelStream();
         this.abortController = new AbortController();
 
         const payload: Record<string, unknown> = { message };
         if (username) payload.username = username;
-        if (personalityId) payload.personality_id = personalityId;
+    if (personalitySlug) payload.personality_slug = personalitySlug;
         if (conversationId) payload.conversation_id = conversationId;
         if (messageHistory && messageHistory.length) {
             payload.message_history = messageHistory;
