@@ -38,7 +38,7 @@ export const MessageComposer = ({
           onKeyDown={onKeyDown}
           placeholder={isStreaming ? 'Vui lòng chờ khi phản hồi hoàn thành!' : 'Nhập tin nhắn...'}
           disabled={isStreaming}
-          className="min-h-12 flex-1 resize-none text-sm rounded-2xl break-all"
+          className="min-h-12 flex-1 resize-none rounded-full break-all"
         />
         <Button
           type="button"

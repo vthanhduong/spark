@@ -45,12 +45,13 @@ export const MessageList = memo(
     };
 
     return (
-      <ScrollArea className="relative flex-1 overflow-hidden">
-        <div
-          ref={containerRef}
-          onScroll={onScroll}
-          className="flex h-full flex-col gap-4 overflow-y-auto px-4 py-6"
-        >
+      <ScrollArea
+        className="relative flex-1 min-h-0 overflow-hidden"
+        viewportRef={containerRef}
+        onViewportScroll={onScroll}
+        viewportClassName="h-full"
+      >
+        <div className="flex min-h-full flex-col gap-4 px-4 py-6">
           {messages.length === 0 && !isStreaming && (
             <div className="flex h-[30vh] items-center justify-center text-center text-4xl font-semibold text-muted-foreground">
               <p>Chào bạn, Hãy cùng trò chuyện ngay!</p>
