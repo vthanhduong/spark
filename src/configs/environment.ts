@@ -1,3 +1,3 @@
 export const env = {
-    API_URL: 'https://dark-heart-api.nytx.io.vn'
+    API_URL: import.meta.env.VITE_API_URL
 }
