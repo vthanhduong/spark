@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { apiFetch, apiJson } from '../../../lib/api';
 import { DEFAULT_PERSONALITY_SLUG, PERSONALITY_OPTIONS, type PersonalityOption } from '../constants/personalities';
 import { SSEService } from '../services/sse.service';
-import type { SSEEndEvent, SSEStartEvent } from '../services/sse.service';
+import type { GuestMessageHistoryEntry, SSEEndEvent, SSEStartEvent } from '../services/sse.service';
 
 export type AuthMode = 'guest' | 'authenticated';
 
@@ -59,7 +59,6 @@ interface ConversationListResponse {
 
 interface ChatStoreState {
     authMode: AuthMode;
-    username: string;
     personalities: PersonalityOption[];
     selectedPersonalitySlug: string;
     conversations: ConversationSummary[];
@@ -79,8 +78,7 @@ interface ChatStoreState {
     sseService: SSEService | null;
     pendingUserMessageTempId: string | null;
     initialize: () => Promise<void>;
-    setAuthMode: (mode: AuthMode, defaultUsername?: string) => void;
-    setUsername: (username: string) => void;
+    setAuthMode: (mode: AuthMode) => void;
     setSelectedPersonalitySlug: (personalitySlug: string) => void;
     fetchConversations: (reset?: boolean) => Promise<void>;
     selectConversation: (conversationId: string | null) => Promise<void>;
@@ -120,7 +118,6 @@ function detailToSummary(detail: ConversationDetail): ConversationSummary {
 
 export const useChatStore = create<ChatStoreState>((set, get) => ({
     authMode: 'guest',
-    username: 'Anonymous',
     personalities: PERSONALITY_OPTIONS,
     selectedPersonalitySlug: DEFAULT_PERSONALITY_SLUG,
     conversations: [],
@@ -145,12 +142,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         return;
     },
 
-    setAuthMode: (mode, defaultUsername) => {
+    setAuthMode: (mode) => {
         const currentMode = get().authMode;
         if (currentMode === mode) {
-            if (defaultUsername && mode === 'authenticated') {
-                set({ username: defaultUsername });
-            }
             return;
         }
 
@@ -158,7 +152,6 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
             get().sseService?.cancelStream();
             set({
                 authMode: 'guest',
-                username: 'Anonymous',
                 conversations: [],
                 hasMoreConversations: false,
                 conversationSkip: 0,
@@ -174,13 +167,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         } else {
             set({
                 authMode: 'authenticated',
-                username: defaultUsername || get().username || 'Anonymous',
             });
         }
-    },
-
-    setUsername: (username) => {
-        set({ username });
     },
 
     setSelectedPersonalitySlug: (personalitySlug) => {
@@ -296,6 +284,17 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
 
         const personalitySlug = state.selectedPersonalitySlug || DEFAULT_PERSONALITY_SLUG;
 
+        const guestHistory: GuestMessageHistoryEntry[] | undefined =
+            state.authMode === 'guest'
+                ? state.messages
+                      .filter((msg): msg is ChatMessage & { sender: 'user' | 'ai' } => msg.sender !== 'system')
+                      .slice(-40)
+                      .map((msg) => ({
+                          sender: msg.sender,
+                          content: msg.content,
+                      }))
+                : undefined;
+
         if (state.authMode === 'guest' && !personalitySlug) {
             throw new Error('Vui lòng chọn nhân cách cho cuộc trò chuyện.');
         }
@@ -391,9 +390,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
 
         await service.streamMessage({
             message: trimmed,
-            username: state.username || 'Anonymous',
             personalitySlug,
             conversationId: state.selectedConversationId || undefined,
+            messageHistory: guestHistory,
         });
 
         if (state.authMode === 'authenticated' && activeConversationId) {
@@ -549,7 +548,6 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         get().sseService?.cancelStream();
         set({
             authMode: 'guest',
-            username: 'Anonymous',
             conversations: [],
             hasMoreConversations: false,
             conversationSkip: 0,

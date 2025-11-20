@@ -1,10 +1,15 @@
 import { env } from '../../../configs/environment';
 
+export interface GuestMessageHistoryEntry {
+    sender: 'user' | 'ai';
+    content: string;
+}
+
 export interface StreamOptions {
     message: string;
-    username?: string;
     personalitySlug?: string;
     conversationId?: string;
+    messageHistory?: GuestMessageHistoryEntry[];
 }
 
 export interface SSEStartEvent {
@@ -42,14 +47,13 @@ export class SSEService {
     }
 
     async streamMessage(options: StreamOptions): Promise<void> {
-    const { message, username, personalitySlug, conversationId } = options;
+        const { message, personalitySlug, conversationId, messageHistory } = options;
 
         this.cancelStream();
         this.abortController = new AbortController();
 
         const payload: Record<string, unknown> = { message };
-        if (username) payload.username = username;
-    if (personalitySlug) payload.personality_slug = personalitySlug;
+        if (personalitySlug) payload.personality_slug = personalitySlug;
         if (conversationId) payload.conversation_id = conversationId;
 
         try {
@@ -58,7 +62,12 @@ export class SSEService {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(payload),
+                body: JSON.stringify({
+                    ...payload,
+                    ...(messageHistory && messageHistory.length > 0
+                        ? { message_history: messageHistory }
+                        : {}),
+                }),
                 signal: this.abortController.signal,
                 credentials: 'include',
             });
