@@ -183,7 +183,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         set({ isLoadingConversations: true });
         try {
             const response = await apiJson<ConversationListResponse>(
-                `/api/conversations?skip=${skip}&limit=20`
+                `/api/conversations/?skip=${skip}&limit=20`
             );
             set((state) => ({
                 conversations: reset ? response.items : [...state.conversations, ...response.items],
