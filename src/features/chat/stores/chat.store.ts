@@ -1,169 +1,555 @@
 import { create } from 'zustand';
-import type { IMessage } from '../types/message.type';
-import { SSEService } from '../services/sse.service';
 
-interface ChatStore {
+import { apiFetch, apiJson } from '../../../lib/api';
+import { SSEService } from '../services/sse.service';
+import type { SSEEndEvent, SSEStartEvent } from '../services/sse.service';
+
+export type AuthMode = 'guest' | 'authenticated';
+
+export interface Personality {
+    id: string;
+    slug: string;
+    name: string;
+    description: string;
+    prompt: string;
+    greeting: string;
+}
+
+export interface ConversationSummary {
+    id: string;
+    title: string;
+    personality_id: string;
+    personality_slug: string;
+    personality_name: string;
+    last_message_preview: string | null;
+    message_count: number;
+    updated_at: string;
+    created_at: string;
+}
+
+export interface ConversationDetail {
+    id: string;
+    title: string;
+    personality_id: string;
+    personality_slug: string;
+    personality_name: string;
+    last_message_preview: string | null;
+    prompt: string;
+    greeting: string;
+    context_override: string | null;
+    effective_prompt: string;
+    message_count: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface ChatMessage {
+    id: string;
+    sender: 'user' | 'ai' | 'system';
+    content: string;
+    createdAt: string;
+}
+
+interface MessageListResponse {
+    messages: Array<{
+        id: string;
+        sender: 'user' | 'ai' | 'system';
+        content: string;
+        created_at: string;
+    }>;
+    has_more: boolean;
+    next_cursor: string | null;
+}
+
+interface ConversationListResponse {
+    items: ConversationSummary[];
+    has_more: boolean;
+    next_skip: number;
+}
+
+interface ChatStoreState {
+    authMode: AuthMode;
     username: string;
-    messages: IMessage[];
-    context: string;
-    personality: string;
-    status: string;
-    input: string;
+    personalities: Personality[];
+    selectedPersonalityId: string | null;
+    conversations: ConversationSummary[];
+    hasMoreConversations: boolean;
+    conversationSkip: number;
+    isLoadingConversations: boolean;
+    selectedConversationId: string | null;
+    conversationDetail: ConversationDetail | null;
+    contextEditorValue: string;
+    messages: ChatMessage[];
+    hasMoreMessages: boolean;
+    nextMessageCursor: string | null;
+    isLoadingMessages: boolean;
+    isLoadingOlderMessages: boolean;
     isStreaming: boolean;
     streamingMessage: string;
     sseService: SSEService | null;
-    collapsed: boolean;
-    secret: boolean;
-    setSecret: (secret: boolean) => void;
+    pendingUserMessageTempId: string | null;
+    initialize: () => Promise<void>;
+    setAuthMode: (mode: AuthMode, defaultUsername?: string) => void;
     setUsername: (username: string) => void;
-    addMessage: (message: IMessage) => void;
-    setContext: (context: string) => void;
-    setPersonality: (personality: string) => void;
-    updateStreamingMessage: (content: string) => void;
-    finishStreaming: (finalContent: string) => void;
-    deleteMessage: (index: number) => void;
-    removeMessagesFromIndex: (index: number) => void;
+    setSelectedPersonalityId: (personalityId: string) => void;
+    fetchConversations: (reset?: boolean) => Promise<void>;
+    selectConversation: (conversationId: string | null) => Promise<void>;
+    loadOlderMessages: () => Promise<void>;
+    sendMessage: (message: string) => Promise<void>;
     clearMessages: () => void;
-    setStatus: (status: string) => void;
-    setInput: (input: string) => void;
-    setIsStreaming: (streaming: boolean) => void;
-    sendMessageSSE: (message: string, context?: string) => Promise<void>;
-    setCollapsed: () => void;
-    loadMessagesFromStorage: () => void;
-    clearAllSecretData: () => void;
+    deleteMessagesFromIndex: (index: number) => Promise<void>;
+    updateContextEditorValue: (value: string) => void;
+    updateContextOverride: () => Promise<void>;
+    updateConversationPersonality: (personalityId: string) => Promise<void>;
+    refreshConversationMetadata: (conversationId: string) => Promise<void>;
+    resetAfterLogout: () => void;
 }
-export const useChatStore = create<ChatStore>((set, get) => ({
-    username: '',
+
+function mapApiMessage(message: MessageListResponse['messages'][number]): ChatMessage {
+    return {
+        id: message.id,
+        sender: message.sender,
+        content: message.content,
+        createdAt: message.created_at,
+    };
+}
+
+function detailToSummary(detail: ConversationDetail): ConversationSummary {
+    return {
+        id: detail.id,
+        title: detail.title,
+        personality_id: detail.personality_id,
+        personality_slug: detail.personality_slug,
+        personality_name: detail.personality_name,
+        last_message_preview: detail.last_message_preview,
+        message_count: detail.message_count,
+        updated_at: detail.updated_at,
+        created_at: detail.created_at,
+    };
+}
+
+export const useChatStore = create<ChatStoreState>((set, get) => ({
+    authMode: 'guest',
+    username: 'Anonymous',
+    personalities: [],
+    selectedPersonalityId: null,
+    conversations: [],
+    hasMoreConversations: false,
+    conversationSkip: 0,
+    isLoadingConversations: false,
+    selectedConversationId: null,
+    conversationDetail: null,
+    contextEditorValue: '',
     messages: [],
-    context: '',
-    personality: 'markiai', // Default personality
-    status: 'connected',
-    input: '',
+    hasMoreMessages: false,
+    nextMessageCursor: null,
+    isLoadingMessages: false,
+    isLoadingOlderMessages: false,
     isStreaming: false,
     streamingMessage: '',
     sseService: null,
-    collapsed: true,
-    secret: false,
-    setSecret: (secret: boolean) => {
-        set({ secret });
-        // No localStorage operations - just set the flag
+    pendingUserMessageTempId: null,
+
+    initialize: async () => {
+        if (get().personalities.length) return;
+        try {
+            const personalities = await apiJson<Personality[]>('/api/personalities');
+            const defaultPersonality =
+                personalities.find((item) => item.slug === 'markiai') || personalities[0];
+            set({
+                personalities,
+                selectedPersonalityId: defaultPersonality ? defaultPersonality.id : null,
+            });
+        } catch (error) {
+            console.error('Không thể tải danh sách personality', error);
+        }
     },
-    setUsername: (username: string) => set({ username }),
-    addMessage: (message: IMessage) => set((state) => {
-        const newMessages = [...state.messages, message];
-        return { messages: newMessages };
-    }),
-    setContext: (context) => {
-        set({ context });
-    },
-    setPersonality: (personality) => set({ personality }),
-    updateStreamingMessage: (content: string) => set({ streamingMessage: content }),
-    finishStreaming: (finalContent: string) => {
-        const newMessage: IMessage = {
-            id: `ai_${Date.now()}`,
-            content: finalContent,
-            sender: 'ai',
-            timestamp: new Date()
-        };
-        set((state) => {
-            const newMessages = [...state.messages, newMessage];
-            return { 
-                messages: newMessages,
-                isStreaming: false,
-                streamingMessage: ''
-            };
-        });
-    },
-    deleteMessage: (index) => set((state) => {
-        const newMessages = [...state.messages];
-        newMessages.splice(index, 1);
-        return { messages: newMessages };
-    }),
-    removeMessagesFromIndex: (index) => set((state) => {
-        const newMessages = state.messages.slice(0, index);
-        return { messages: newMessages };
-    }),
-    clearMessages: () => set({ messages: [] }),
-    setStatus: (status) => set({ status }),
-    setInput: (input) => set({ input }),
-    setIsStreaming: (streaming) => set({ isStreaming: streaming }),
-    
-    loadMessagesFromStorage: () => {
-        // No localStorage operations - do nothing
-    },
-    
-    setCollapsed: () => set({ collapsed: !get().collapsed }),
-    
-    clearAllSecretData: () => {
-        // No localStorage operations - do nothing
-    },
-    
-    sendMessageSSE: async (message: string, contextOverride?: string) => {
-        const state = get();
-        
-        if (!state.username) {
-            console.error('Username is required');
+
+    setAuthMode: (mode, defaultUsername) => {
+        const currentMode = get().authMode;
+        if (currentMode === mode) {
+            if (defaultUsername && mode === 'authenticated') {
+                set({ username: defaultUsername });
+            }
             return;
         }
-        
-        // Add user message immediately
-        const userMessage: IMessage = {
-            id: `user_${Date.now()}`,
-            content: message,
-            sender: 'you',
-            timestamp: new Date()
-        };
-        
-        const addMessage = get().addMessage;
-        addMessage(userMessage);
-        
-        // Initialize SSE service if not exists
-        let sseService = state.sseService;
-        if (!sseService) {
-            sseService = new SSEService();
-            set({ sseService });
+
+        if (mode === 'guest') {
+            get().sseService?.cancelStream();
+            set({
+                authMode: 'guest',
+                username: 'Anonymous',
+                conversations: [],
+                hasMoreConversations: false,
+                conversationSkip: 0,
+                selectedConversationId: null,
+                conversationDetail: null,
+                contextEditorValue: '',
+                messages: [],
+                hasMoreMessages: false,
+                nextMessageCursor: null,
+                isStreaming: false,
+                streamingMessage: '',
+            });
+        } else {
+            set({
+                authMode: 'authenticated',
+                username: defaultUsername || get().username || 'Anonymous',
+            });
         }
-        
-        // Set up event handlers - direct updates without throttling
-        let fullResponse = '';
-        
-        sseService.onStreamStart = () => {
-            set({ isStreaming: true, streamingMessage: '' });
-            fullResponse = '';
+    },
+
+    setUsername: (username) => {
+        set({ username });
+    },
+
+    setSelectedPersonalityId: (personalityId) => {
+        set({ selectedPersonalityId: personalityId });
+    },
+
+    fetchConversations: async (reset = false) => {
+        if (get().authMode !== 'authenticated') return;
+        if (get().isLoadingConversations) return;
+
+        const skip = reset ? 0 : get().conversationSkip;
+        set({ isLoadingConversations: true });
+        try {
+            const response = await apiJson<ConversationListResponse>(
+                `/api/conversations?skip=${skip}&limit=20`
+            );
+            set((state) => ({
+                conversations: reset ? response.items : [...state.conversations, ...response.items],
+                hasMoreConversations: response.has_more,
+                conversationSkip: response.next_skip,
+                isLoadingConversations: false,
+            }));
+        } catch (error) {
+            console.error('Không thể tải danh sách hội thoại', error);
+            set({ isLoadingConversations: false });
+        }
+    },
+
+    selectConversation: async (conversationId) => {
+        if (conversationId === null) {
+            get().sseService?.cancelStream();
+            set({
+                selectedConversationId: null,
+                conversationDetail: null,
+                contextEditorValue: '',
+                messages: [],
+                hasMoreMessages: false,
+                nextMessageCursor: null,
+                streamingMessage: '',
+                isStreaming: false,
+            });
+            return;
+        }
+
+        set({
+            selectedConversationId: conversationId,
+            isLoadingMessages: true,
+            streamingMessage: '',
+            isStreaming: false,
+        });
+
+        try {
+            const [detail, messagesResponse] = await Promise.all([
+                apiJson<ConversationDetail>(`/api/conversations/${conversationId}`),
+                apiJson<MessageListResponse>(`/api/conversations/${conversationId}/messages?limit=8`),
+            ]);
+
+            const mappedMessages = messagesResponse.messages.map(mapApiMessage);
+
+            set({
+                conversationDetail: detail,
+                contextEditorValue: detail.context_override ?? '',
+                messages: mappedMessages,
+                hasMoreMessages: messagesResponse.has_more,
+                nextMessageCursor: messagesResponse.next_cursor,
+                isLoadingMessages: false,
+            });
+        } catch (error) {
+            console.error('Không thể tải hội thoại', error);
+            set({ isLoadingMessages: false });
+            throw error;
+        }
+    },
+
+    loadOlderMessages: async () => {
+        const {
+            authMode,
+            selectedConversationId,
+            hasMoreMessages,
+            nextMessageCursor,
+            isLoadingOlderMessages,
+        } = get();
+
+        if (authMode !== 'authenticated') return;
+        if (!selectedConversationId || !hasMoreMessages || isLoadingOlderMessages) return;
+        if (!nextMessageCursor) return;
+
+        set({ isLoadingOlderMessages: true });
+        try {
+            const response = await apiJson<MessageListResponse>(
+                `/api/conversations/${selectedConversationId}/messages?limit=8&cursor=${nextMessageCursor}`
+            );
+            const mapped = response.messages.map(mapApiMessage);
+            set((state) => ({
+                messages: [...mapped, ...state.messages],
+                hasMoreMessages: response.has_more,
+                nextMessageCursor: response.next_cursor,
+                isLoadingOlderMessages: false,
+            }));
+        } catch (error) {
+            console.error('Không thể tải thêm tin nhắn', error);
+            set({ isLoadingOlderMessages: false });
+        }
+    },
+
+    sendMessage: async (message: string) => {
+        const trimmed = message.trim();
+        if (!trimmed) return;
+        const state = get();
+        if (state.isStreaming) return;
+
+        const personalities = state.personalities;
+        let personalityId = state.selectedPersonalityId;
+        if (!personalityId && personalities.length > 0) {
+            personalityId = personalities[0].id;
+        }
+
+        if (state.authMode === 'guest' && !personalityId) {
+            throw new Error('Vui lòng chọn nhân cách cho cuộc trò chuyện.');
+        }
+
+        const previousMessages = state.messages;
+        const tempId = `temp-${Date.now()}`;
+        const now = new Date().toISOString();
+
+        const service = state.sseService ?? new SSEService();
+        if (!state.sseService) {
+            set({ sseService: service });
+        }
+
+        set((current) => ({
+            messages: [
+                ...current.messages,
+                {
+                    id: tempId,
+                    sender: 'user',
+                    content: trimmed,
+                    createdAt: now,
+                },
+            ],
+            isStreaming: true,
+            streamingMessage: '',
+            pendingUserMessageTempId: tempId,
+        }));
+
+        const messageHistory =
+            state.authMode === 'guest'
+                ? previousMessages.map((msg) => ({ sender: msg.sender, content: msg.content }))
+                : undefined;
+
+        let createdConversationId: string | null = null;
+        let activeConversationId = state.selectedConversationId ?? null;
+
+        service.onStreamStart = (event: SSEStartEvent) => {
+            if (event.user_message_id) {
+                set((current) => ({
+                    messages: current.messages.map((msg) =>
+                        msg.id === tempId ? { ...msg, id: event.user_message_id! } : msg
+                    ),
+                    pendingUserMessageTempId: null,
+                }));
+            }
+
+            if (event.conversation_id) {
+                activeConversationId = event.conversation_id;
+                if (!state.selectedConversationId && state.authMode === 'authenticated') {
+                    createdConversationId = event.conversation_id;
+                    set({ selectedConversationId: event.conversation_id });
+                }
+            }
         };
-        
-        sseService.onStreamChunk = (chunk: string) => {
-            fullResponse += chunk;
-            set({ streamingMessage: fullResponse });
+
+        service.onStreamChunk = (event) => {
+            set({ streamingMessage: event.content });
         };
-        
-        sseService.onStreamEnd = (finalContent: string) => {
-            // Final update with complete content
-            const finishStreaming = get().finishStreaming;
-            finishStreaming(finalContent || fullResponse);
-            fullResponse = '';
+
+        service.onStreamEnd = (event: SSEEndEvent) => {
+            const aiMessageId = event.ai_message_id || `ai-${Date.now()}`;
+            const content = event.content.trim();
+            const timestamp = new Date().toISOString();
+            set((current) => ({
+                messages: [
+                    ...current.messages,
+                    {
+                        id: aiMessageId,
+                        sender: 'ai',
+                        content,
+                        createdAt: timestamp,
+                    },
+                ],
+                isStreaming: false,
+                streamingMessage: '',
+            }));
+            if (event.conversation_id) {
+                activeConversationId = event.conversation_id;
+            }
         };
-        
-        sseService.onStreamError = (error: string) => {
-            console.error('SSE error:', error);
-            
-            set({ isStreaming: false, streamingMessage: '' });
-            
-            // Add error message
-            const errorMessage: IMessage = {
-                id: `error_${Date.now()}`,
-                content: `Error: ${error}`,
-                sender: 'ai',
-                timestamp: new Date()
-            };
-            addMessage(errorMessage);
+
+        service.onStreamError = (errorMessage: string) => {
+            set((current) => ({
+                isStreaming: false,
+                streamingMessage: '',
+                messages: [
+                    ...current.messages,
+                    {
+                        id: `error-${Date.now()}`,
+                        sender: 'system',
+                        content: `Lỗi: ${errorMessage}`,
+                        createdAt: new Date().toISOString(),
+                    },
+                ],
+            }));
         };
-        
-        // Send message via SSE
-        const contextToUse = contextOverride || state.context;
-        await sseService.streamMessage(message, contextToUse, state.username, state.messages);
-        
-        // Clear input
-        set({ input: '' });
-    }
+
+        await service.streamMessage({
+            message: trimmed,
+            username: state.username || 'Anonymous',
+            personalityId: state.selectedConversationId ? undefined : personalityId || undefined,
+            conversationId: state.selectedConversationId || undefined,
+            messageHistory,
+        });
+
+        if (state.authMode === 'authenticated' && activeConversationId) {
+            await get().refreshConversationMetadata(activeConversationId);
+            if (createdConversationId) {
+                await get().selectConversation(createdConversationId);
+            }
+        }
+    },
+
+    clearMessages: () => {
+        set({ messages: [], streamingMessage: '', nextMessageCursor: null, hasMoreMessages: false });
+    },
+
+    deleteMessagesFromIndex: async (index: number) => {
+        const state = get();
+        if (index < 0 || index >= state.messages.length) return;
+
+        if (state.authMode === 'guest') {
+            set({ messages: state.messages.slice(0, index) });
+            return;
+        }
+
+        const conversationId = state.selectedConversationId;
+        if (!conversationId) return;
+
+        const messagesToDelete = state.messages.slice(index);
+        for (const message of messagesToDelete) {
+            if (message.sender === 'system') continue;
+            try {
+                await apiFetch(`/api/conversations/${conversationId}/messages/${message.id}`, {
+                    method: 'DELETE',
+                });
+            } catch (error) {
+                console.error('Không thể xoá tin nhắn', error);
+                break;
+            }
+        }
+
+        set({ messages: state.messages.slice(0, index) });
+        await get().refreshConversationMetadata(conversationId);
+    },
+
+    updateContextEditorValue: (value: string) => {
+        set({ contextEditorValue: value });
+    },
+
+    updateContextOverride: async () => {
+        const state = get();
+        if (state.authMode !== 'authenticated') return;
+        if (!state.conversationDetail || !state.selectedConversationId) return;
+
+        try {
+            const detail = await apiJson<ConversationDetail>(
+                `/api/conversations/${state.selectedConversationId}/context`,
+                {
+                    method: 'PATCH',
+                    body: JSON.stringify({ context: state.contextEditorValue }),
+                }
+            );
+            set({ conversationDetail: detail, contextEditorValue: detail.context_override ?? '' });
+            await get().refreshConversationMetadata(detail.id);
+        } catch (error) {
+            console.error('Không thể cập nhật context', error);
+            throw error;
+        }
+    },
+
+    updateConversationPersonality: async (personalityId: string) => {
+        const state = get();
+        if (state.authMode !== 'authenticated') {
+            set({ selectedPersonalityId: personalityId });
+            return;
+        }
+
+        if (!state.selectedConversationId) {
+            set({ selectedPersonalityId: personalityId });
+            return;
+        }
+
+        try {
+            const detail = await apiJson<ConversationDetail>(
+                `/api/conversations/${state.selectedConversationId}`,
+                {
+                    method: 'PATCH',
+                    body: JSON.stringify({ personality_id: personalityId }),
+                }
+            );
+            set({ conversationDetail: detail, contextEditorValue: detail.context_override ?? '' });
+            await get().refreshConversationMetadata(detail.id);
+        } catch (error) {
+            console.error('Không thể cập nhật personality', error);
+            throw error;
+        }
+    },
+
+    refreshConversationMetadata: async (conversationId: string) => {
+        if (get().authMode !== 'authenticated') return;
+        try {
+            const detail = await apiJson<ConversationDetail>(`/api/conversations/${conversationId}`);
+            set((state) => ({
+                conversationDetail:
+                    state.selectedConversationId === conversationId ? detail : state.conversationDetail,
+                conversations: state.conversations
+                    .filter((item) => item.id !== conversationId)
+                    .concat(detailToSummary(detail))
+                    .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
+            }));
+        } catch (error) {
+            console.error('Không thể đồng bộ hội thoại', error);
+        }
+    },
+
+    resetAfterLogout: () => {
+        get().sseService?.cancelStream();
+        set({
+            authMode: 'guest',
+            username: 'Anonymous',
+            conversations: [],
+            hasMoreConversations: false,
+            conversationSkip: 0,
+            selectedConversationId: null,
+            conversationDetail: null,
+            contextEditorValue: '',
+            messages: [],
+            hasMoreMessages: false,
+            nextMessageCursor: null,
+            isStreaming: false,
+            streamingMessage: '',
+        });
+    },
 }));

@@ -1,467 +1,394 @@
-import { useState, useEffect, useRef } from 'react';
+import clsx from 'clsx';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
 import { useChatStore } from '../stores/chat.store';
-import { useParams } from 'react-router-dom';
-import { DEFAULT_CONTEXT, SECRET_CONTEXT, SIEU_MAT_DAY_CONTEXT, VINH_YET_CONTEXT } from '../constants/context.constant';
+import { useSessionStore } from '../../auth/stores/session.store';
 import { LLMMessageRenderer } from './LLMMessageRenderer';
 
+const CONTEXT_MENU_WIDTH = 200;
+
+interface ContextMenuState {
+	visible: boolean;
+	x: number;
+	y: number;
+	messageIndex: number | null;
+	content: string;
+}
+
 export const MessagePanel = () => {
-    const {
-        messages,
-        context,
-        isStreaming,
-        streamingMessage,
-        username,
-        sendMessageSSE,
-        setUsername,
-        setContext,
-        addMessage,
-        personality,
-        clearMessages,
-        removeMessagesFromIndex,
-        setSecret,
-        secret,
-        setPersonality,
-    } = useChatStore();
-    const [tempContext, setTempContext] = useState("");
-    useEffect(() => {
-        setTempContext(context);
-    }, [context]);
-    const [text, setText] = useState('');
-    const [selectedMessageIndex, setSelectedMessageIndex] = useState<number | null>(null);
-    const [visible, setVisible] = useState(false);
-    const [position, setPosition] = useState({ x: 0, y: 0 });
-    const [localInput, setLocalInput] = useState('');
-    const [expand, setExpand] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const messagesWrapperRef = useRef<HTMLDivElement>(null);
-    const hasOverflowedRef = useRef(false);
-    const forceScrollRef = useRef(false);
-    const prevStreamingRef = useRef(isStreaming);
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const initRef = useRef(false);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const CONTEXT_MENU_WIDTH = 192; // Width of the context menu
-    const pressTimer = useRef<number | null>(null);
-    const LONG_PRESS_DELAY = 700;
+	const {
+		authMode,
+		username,
+		setUsername,
+		personalities,
+		selectedPersonalityId,
+		setSelectedPersonalityId,
+		conversationDetail,
+		messages,
+		streamingMessage,
+		isStreaming,
+		sendMessage,
+		deleteMessagesFromIndex,
+		loadOlderMessages,
+		hasMoreMessages,
+		isLoadingOlderMessages,
+		contextEditorValue,
+		updateContextEditorValue,
+		updateContextOverride,
+		updateConversationPersonality,
+	} = useChatStore((state) => ({
+		authMode: state.authMode,
+		username: state.username,
+		setUsername: state.setUsername,
+		personalities: state.personalities,
+		selectedPersonalityId: state.selectedPersonalityId,
+		setSelectedPersonalityId: state.setSelectedPersonalityId,
+		conversationDetail: state.conversationDetail,
+		messages: state.messages,
+		streamingMessage: state.streamingMessage,
+		isStreaming: state.isStreaming,
+		sendMessage: state.sendMessage,
+		deleteMessagesFromIndex: state.deleteMessagesFromIndex,
+		loadOlderMessages: state.loadOlderMessages,
+		hasMoreMessages: state.hasMoreMessages,
+		isLoadingOlderMessages: state.isLoadingOlderMessages,
+		contextEditorValue: state.contextEditorValue,
+		updateContextEditorValue: state.updateContextEditorValue,
+		updateContextOverride: state.updateContextOverride,
+		updateConversationPersonality: state.updateConversationPersonality,
+	}));
 
-    const handleContextMenu = (e: React.MouseEvent, str: string, messageIndex: number) => {
-        e.preventDefault();
-        if (!containerRef.current) return;
-        const rect = containerRef.current.getBoundingClientRect();
-        let x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        if (x + CONTEXT_MENU_WIDTH > rect.width) {
-            x = rect.width - CONTEXT_MENU_WIDTH;
-            if (x < 0) x = 0;
-        }
-        setPosition({
-            x,
-            y
-        });
-        setText(str);
-        setSelectedMessageIndex(messageIndex);
-        setVisible(true);
-    };
+	const userRole = useSessionStore((state) => state.user?.role);
 
-    const handleClick = () => {
-        setVisible(false);
-    };
+	const [inputValue, setInputValue] = useState('');
+	const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+		visible: false,
+		x: 0,
+		y: 0,
+		messageIndex: null,
+		content: '',
+	});
+	const [showContextEditor, setShowContextEditor] = useState(false);
+	const [isSavingContext, setIsSavingContext] = useState(false);
+	const [contextSaveMessage, setContextSaveMessage] = useState<string | null>(null);
 
-    const copyToClipboard = () => {
-        try {
-            navigator.clipboard.writeText(text)
-                .then(() => {
-                })
-                .catch(err => {
-                    console.error('Failed to copy text: ', err);
-                });
-        } catch (err) {
-            console.error(err);
-        }
-        setVisible(false);
-    };
+	const messageContainerRef = useRef<HTMLDivElement>(null);
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const shouldStickToBottomRef = useRef(true);
 
-    const deleteFromSelected = () => {
-        if (selectedMessageIndex !== null) {
-            removeMessagesFromIndex(selectedMessageIndex);
-        }
-        setVisible(false);
-    };
+	const activePersonalityId = useMemo(() => {
+		if (conversationDetail) {
+			return conversationDetail.personality_id;
+		}
+		return selectedPersonalityId;
+	}, [conversationDetail, selectedPersonalityId]);
 
-    const retryLastAIResponse = () => {
-        if (selectedMessageIndex === null) {
-            setVisible(false);
-            return;
-        }
+	const handleSend = async () => {
+		if (!inputValue.trim()) return;
+		try {
+			await sendMessage(inputValue);
+			setInputValue('');
+			adjustTextareaHeight();
+		} catch (error) {
+			console.error('Không thể gửi tin nhắn', error);
+		}
+	};
 
-        // Chỉ cho phép retry response cuối cùng của AI
-        const lastAIMessageIndex = messages.length - 1;
-        if (selectedMessageIndex !== lastAIMessageIndex) {
-            setVisible(false);
-            return;
-        }
+	const adjustTextareaHeight = (element?: HTMLTextAreaElement | null) => {
+		const textarea = element ?? textareaRef.current;
+		if (!textarea) return;
+		const minHeight = 48;
+		const maxHeight = 240;
+		textarea.style.height = 'auto';
+		const measured = textarea.scrollHeight || minHeight;
+		const next = Math.min(Math.max(measured, minHeight), maxHeight);
+		textarea.style.height = `${next}px`;
+		textarea.style.overflowY = measured > maxHeight ? 'auto' : 'hidden';
+	};
 
-        // Tìm tin nhắn user gần nhất (tin nhắn trước tin nhắn AI này)
-        const previousUserMessage = messages[selectedMessageIndex - 1];
-        if (!previousUserMessage || previousUserMessage.sender !== 'you') {
-            console.error('Cannot find previous user message');
-            setVisible(false);
-            return;
-        }
+	useEffect(() => {
+		adjustTextareaHeight();
+	}, [inputValue]);
 
-        // Lưu nội dung user message
-        const userMessageContent = previousUserMessage.content;
+	useEffect(() => {
+		const container = messageContainerRef.current;
+		if (!container) return;
+		if (shouldStickToBottomRef.current) {
+			container.scrollTo({ top: container.scrollHeight });
+		}
+	}, [messages, streamingMessage]);
 
-        // Xóa cả user message và AI message (xóa từ vị trí user message)
-        removeMessagesFromIndex(selectedMessageIndex - 1);
+	useEffect(() => {
+		if (isStreaming) {
+			shouldStickToBottomRef.current = true;
+		}
+	}, [isStreaming]);
 
-        // Gửi lại tin nhắn user để gen response mới
-        setTimeout(() => {
-            sendMessageSSE(userMessageContent, context);
-        }, 100);
+	const handleTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			if (!isStreaming) {
+				handleSend();
+			}
+		}
+	};
 
-        setVisible(false);
-    };
+	const handleScroll = async (event: React.UIEvent<HTMLDivElement>) => {
+		const target = event.currentTarget;
+		const nearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 150;
+		shouldStickToBottomRef.current = nearBottom;
 
-    const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
-        const wrapper = messagesWrapperRef.current;
-        if (wrapper) {
-            requestAnimationFrame(() => {
-                wrapper.scrollTo({
-                    top: wrapper.scrollHeight,
-                    behavior,
-                });
-            });
-        } else {
-            messagesEndRef.current?.scrollIntoView({ behavior });
-        }
-    };
+		if (target.scrollTop <= 0 && hasMoreMessages && !isLoadingOlderMessages) {
+			const previousHeight = target.scrollHeight;
+			await loadOlderMessages();
+			requestAnimationFrame(() => {
+				const container = messageContainerRef.current;
+				if (!container) return;
+				const newHeight = container.scrollHeight;
+				container.scrollTop = newHeight - previousHeight;
+			});
+		}
+	};
 
-    const handleTouchStart = (e: React.TouchEvent, str: string, messageIndex: number) => {
-        pressTimer.current = setTimeout(() => {
-            if (!containerRef.current) return;
-            const rect = containerRef.current.getBoundingClientRect();
-            const touch = e.touches[0];
-            let x = touch.clientX - rect.left;
-            const y = touch.clientY - rect.top;
-            
-            if (x + CONTEXT_MENU_WIDTH > rect.width) {
-                x = rect.width - CONTEXT_MENU_WIDTH;
-                if (x < 0) x = 0;
-            }
-            setPosition({
-                x,
-                y
-            });
-            setText(str);
-            setSelectedMessageIndex(messageIndex);
-            setVisible(true);
-            navigator.vibrate(100);
-        }, LONG_PRESS_DELAY);
-    };
+	const handlePersonalityChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+		const value = event.target.value;
+		if (conversationDetail && authMode === 'authenticated') {
+			if (value !== conversationDetail.personality_id) {
+				updateConversationPersonality(value).catch((error) => {
+					console.error('Không thể thay đổi personality', error);
+				});
+			}
+		} else {
+			setSelectedPersonalityId(value);
+		}
+	};
 
-    const handleTouchEnd = () => {
-        if (pressTimer.current) {
-            clearTimeout(pressTimer.current);
-        }
-    };
+	const handleContextMenu = (
+		event: React.MouseEvent<HTMLDivElement>,
+		index: number,
+		content: string,
+	) => {
+		event.preventDefault();
+		const container = messageContainerRef.current;
+		if (!container) return;
+		const rect = container.getBoundingClientRect();
+		let x = event.clientX - rect.left;
+		const y = event.clientY - rect.top;
+		if (x + CONTEXT_MENU_WIDTH > rect.width) {
+			x = Math.max(0, rect.width - CONTEXT_MENU_WIDTH);
+		}
+		setContextMenu({
+			visible: true,
+			x,
+			y,
+			messageIndex: index,
+			content,
+		});
+	};
 
-    const handleTouchCancel = () => {
-        if (pressTimer.current) {
-            clearTimeout(pressTimer.current);
-        }
-        setVisible(false);
-    };
-    const dopamine = useParams<{ secret: string }>();
-    const encode=(s: string)=>[...s].map((c,i)=>String.fromCharCode(c.charCodeAt(0)^i)).join('');
-    const sk = 'dtmmcss';
-    
-    useEffect(() => {
-        const wrapper = messagesWrapperRef.current;
-        if (!wrapper) return;
+	const hideContextMenu = () => {
+		setContextMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+	};
 
-        const overflowDelta = wrapper.scrollHeight - wrapper.clientHeight;
-        const isOverflowing = overflowDelta > 8;
-        const distanceFromBottom = wrapper.scrollHeight - wrapper.scrollTop - wrapper.clientHeight;
-        const isNearBottom = distanceFromBottom < 150;
-        const hadOverflow = hasOverflowedRef.current;
-        const shouldForceScroll = forceScrollRef.current;
+	const handleCopy = async () => {
+		try {
+			await navigator.clipboard.writeText(contextMenu.content);
+		} catch (error) {
+			console.error('Không thể sao chép tin nhắn', error);
+		}
+		hideContextMenu();
+	};
 
-        // Always scroll when streaming or when forced
-        if (shouldForceScroll || isStreaming) {
-            scrollToBottom('smooth');
-            forceScrollRef.current = false;
-        } else if (isOverflowing && (!hadOverflow || isNearBottom)) {
-            scrollToBottom('smooth');
-        }
+	const handleDeleteFromHere = async () => {
+		if (contextMenu.messageIndex === null) return;
+		try {
+			await deleteMessagesFromIndex(contextMenu.messageIndex);
+		} catch (error) {
+			console.error('Không thể xoá tin nhắn', error);
+		} finally {
+			hideContextMenu();
+		}
+	};
 
-        hasOverflowedRef.current = isOverflowing;
-    }, [messages, streamingMessage, isStreaming]);
+	const handleSaveContext = async () => {
+		setIsSavingContext(true);
+		setContextSaveMessage(null);
+		try {
+			await updateContextOverride();
+			setContextSaveMessage('Đã lưu context thành công.');
+		} catch (error) {
+			console.error('Không thể lưu context', error);
+			setContextSaveMessage('Không thể lưu context.');
+		} finally {
+			setIsSavingContext(false);
+			setTimeout(() => setContextSaveMessage(null), 4000);
+		}
+	};
 
-    useEffect(() => {
-        // When streaming starts
-        if (isStreaming && !prevStreamingRef.current) {
-            forceScrollRef.current = true;
-        }
-        // When streaming ends, force scroll to bottom and focus textarea
-        if (!isStreaming && prevStreamingRef.current) {
-            setTimeout(() => {
-                scrollToBottom('smooth');
-                textareaRef.current?.focus();
-            }, 100);
-        }
-        prevStreamingRef.current = isStreaming;
-    }, [isStreaming]);
+	return (
+		<div className="flex h-full flex-col bg-neutral-900/40 text-slate-100">
+			<header className="border-b border-neutral-700 bg-neutral-900/70 px-4 py-3 backdrop-blur">
+				<div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+					<div className="flex flex-wrap items-center gap-3">
+						<label className="flex items-center gap-2 text-sm text-neutral-300">
+							<span>Tên hiển thị</span>
+							<input
+								value={username}
+								onChange={(event) => setUsername(event.target.value)}
+								className="h-9 rounded-full border border-neutral-600 bg-neutral-800 px-4 text-sm text-white focus:border-green-400 focus:outline-none"
+								placeholder="Nhập tên của bạn"
+							/>
+						</label>
+						<label className="flex items-center gap-2 text-sm text-neutral-300">
+							<span>Nhân cách</span>
+							<select
+								value={activePersonalityId ?? ''}
+								onChange={handlePersonalityChange}
+								className="h-9 rounded-full border border-neutral-600 bg-neutral-800 px-3 text-sm text-white focus:border-green-400 focus:outline-none"
+							>
+								<option value="" disabled>
+									Chọn nhân cách
+								</option>
+								{personalities.map((personality) => (
+									<option key={personality.id} value={personality.id}>
+										{personality.name}
+									</option>
+								))}
+							</select>
+						</label>
+					</div>
+					{conversationDetail && (
+						<div className="flex flex-wrap items-center gap-4 text-xs text-neutral-400">
+							<span>Mã hội thoại: {conversationDetail.id}</span>
+							<span>{conversationDetail.message_count} tin nhắn</span>
+							<span>Cập nhật: {new Date(conversationDetail.updated_at).toLocaleString()}</span>
+						</div>
+					)}
+				</div>
+				{conversationDetail && userRole === 'quest_expert' && (
+					<div className="mt-3">
+						<button
+							type="button"
+							onClick={() => setShowContextEditor((prev) => !prev)}
+							className="rounded-full border border-green-400 px-4 py-1 text-sm font-semibold text-green-400 transition hover:bg-green-400/10"
+						>
+							{showContextEditor ? 'Ẩn context' : 'Chỉnh sửa context'}
+						</button>
+					</div>
+				)}
+				{showContextEditor && conversationDetail && userRole === 'quest_expert' && (
+					<div className="mt-3 space-y-3 rounded-2xl border border-neutral-700 bg-neutral-900/80 p-4">
+						<textarea
+							value={contextEditorValue}
+							onChange={(event) => updateContextEditorValue(event.target.value)}
+							className="h-40 w-full resize-none rounded-xl border border-neutral-700 bg-neutral-800 p-3 text-sm text-white focus:border-green-400 focus:outline-none"
+							placeholder="Nhập context mới cho hội thoại"
+						/>
+						<div className="flex items-center gap-3">
+							<button
+								type="button"
+								onClick={handleSaveContext}
+								disabled={isSavingContext}
+								className="rounded-full bg-green-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-green-400 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								{isSavingContext ? 'Đang lưu...' : 'Lưu context'}
+							</button>
+							{contextSaveMessage && (
+								<span className="text-xs text-neutral-300">{contextSaveMessage}</span>
+							)}
+						</div>
+					</div>
+				)}
+			</header>
 
-    const adjustTextareaHeight = (element?: HTMLTextAreaElement | null) => {
-        const textarea = element ?? textareaRef.current;
-        if (!textarea) return;
-        const minHeight = 48;
-        const maxHeight = 240;
-        textarea.style.height = 'auto';
-        const measuredHeight = textarea.scrollHeight || minHeight;
-        const nextHeight = Math.min(Math.max(measuredHeight, minHeight), maxHeight);
-        textarea.style.height = `${nextHeight}px`;
-        textarea.style.overflowY = measuredHeight > maxHeight ? 'auto' : 'hidden';
-    };
-    useEffect(() => {
-        if (!initRef.current) {
-            if (!username) {
-                setUsername('anonymous');
-            }
-            if (!context) {
-                setContext(DEFAULT_CONTEXT + `\nBạn đang trò chuyện với người dùng có tên là ${username}.`);
-            }
-            initRef.current = true;
-        }
-        
-        if (dopamine.secret && encode(dopamine.secret) === sk) {
-            // Set secret mode first, then set context
-            setSecret(true);
-            
-            // Set default context for secret mode
-            if (!context) {
-                const secretContext = SECRET_CONTEXT + `\nBạn tên là {name} bạn đang tương tác với ${username} với tư cách vợ của anh ấy!`;
-                setContext(secretContext);
-            }
-        } else {
-            setSecret(false);
-            if (personality === 'sieumatday') {
-                setContext(SIEU_MAT_DAY_CONTEXT + `\nBạn đang trò chuyện với người dùng có tên là ${username}.`);
-            } else if (personality === 'vinhyet') {
-                setContext(VINH_YET_CONTEXT + `\nBạn đang trò chuyện với người dùng có tên là ${username}.`);
-            } else {
-                setContext(DEFAULT_CONTEXT + `\nBạn đang trò chuyện với người dùng có tên là ${username}.`);
-            }
-        } 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [username, personality]);
-    useEffect(() => {
-        // Only clear messages and add default message if NOT in secret mode
-        if (!dopamine.secret || encode(dopamine.secret) !== sk) {
-            clearMessages();
-            if (personality === 'sieumatday') {
-                addMessage({
-                    id: `system_${Date.now()}`,
-                    content: 'Ơ vãi cả lồn sao bố mày lại ở đây vậy?',
-                    sender: 'ai',
-                    timestamp: new Date(),
-                });
-            } else if (personality === 'vinhyet') {
-                addMessage({
-                    id: `system_${Date.now()}`,
-                    content: 'Chào mày đến với thế giới của Vinh yet, mày thích nói gì về tao à?',
-                    sender: 'ai',
-                    timestamp: new Date(),
-                });
-            } else {
-                addMessage({
-                    id: `system_${Date.now()}`,
-                    content: 'Hello, chào bạn nha! Rất vui được trò chuyện với bạn! Đố bạn biết mình tên gì đó?',
-                    sender: 'ai',
-                    timestamp: new Date(),
-                });
-            }
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [personality]);
+			<div
+				className="relative flex-1 overflow-hidden"
+				onClick={hideContextMenu}
+			>
+				<div
+					ref={messageContainerRef}
+					onScroll={handleScroll}
+					className="flex h-full flex-col gap-4 overflow-y-auto px-4 py-6"
+				>
+					{isLoadingOlderMessages && (
+						<div className="text-center text-xs text-neutral-400">Đang tải thêm tin nhắn...</div>
+					)}
+					{messages.map((message, index) => {
+						const isUser = message.sender === 'user';
+						return (
+							<div key={message.id} className={clsx('flex w-full', isUser ? 'justify-end' : 'justify-start')}>
+								<div
+									onContextMenu={(event) => handleContextMenu(event, index, message.content)}
+									className={clsx(
+										'max-w-full rounded-3xl px-5 py-3 text-sm shadow-sm sm:max-w-3xl',
+										isUser
+											? 'bg-green-500/90 text-black'
+											: 'bg-neutral-800/80 text-neutral-100',
+									)}
+								>
+									<LLMMessageRenderer content={message.content} isStreaming={false} />
+								</div>
+							</div>
+						);
+					})}
+					{isStreaming && streamingMessage && (
+						<div className="flex justify-start">
+							<div className="max-w-full rounded-3xl bg-neutral-800/80 px-5 py-3 text-sm text-neutral-100 sm:max-w-3xl">
+								<LLMMessageRenderer content={streamingMessage} isStreaming />
+							</div>
+						</div>
+					)}
+					{isStreaming && !streamingMessage && (
+						<div className="flex justify-start text-sm text-neutral-400">AI đang trả lời...</div>
+					)}
+				</div>
 
-    
+				{contextMenu.visible && (
+					<ul
+						className="absolute z-50 w-48 rounded-xl border border-neutral-700 bg-neutral-900/95 text-sm text-white shadow-2xl"
+						style={{ top: contextMenu.y, left: contextMenu.x }}
+					>
+						<li
+							className="cursor-pointer px-4 py-2 transition hover:bg-neutral-800"
+							onClick={handleCopy}
+						>
+							Sao chép
+						</li>
+						<li
+							className="cursor-pointer px-4 py-2 transition hover:bg-neutral-800"
+							onClick={handleDeleteFromHere}
+						>
+							Xoá từ đây
+						</li>
+					</ul>
+				)}
+			</div>
 
-    const handleSendMessage = () => {
-        if (localInput.trim()) {
-            sendMessageSSE(localInput.trim(), context);
-            setLocalInput('');
-        }
-    };
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setLocalInput(e.target.value);
-        adjustTextareaHeight(e.currentTarget);
-    };
-
-    const handleKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            if (!isStreaming) {
-                handleSendMessage();
-            }
-        }
-    };
-
-    return (
-        <div className='w-full h-screen flex flex-col text-slate-100'>
-            {/* Header Section */}
-            <div className='grid grid-cols-1 sm:grid-cols-2 backdrop-blur bg-neutral-800 border-b border-neutral-700 text-white w-full p-2'>
-                <div className="my-1 flex flex-row items-center">
-                    <span style={{ fontFamily: 'Consolas, monospace' }} className="whitespace-pre xl:whitespace-normal">Username&nbsp;</span>
-                    <input 
-                        type="text"
-                        placeholder="Enter your username"
-                        className="border focus:outline-none focus:bg-neutral-800 border-neutral-700 bg-neutral-700 rounded-3xl px-2 me-4 h-10 w-64"
-                        value={username} 
-                        onChange={(e) => {setUsername(e.target.value)}}
-                    />
-                </div>
-                <div className="my-1 flex flex-row items-center">
-                    {!secret ? (
-                        <>
-                            <span className="whitespace-pre xl:whitespace-normal" style={{ fontFamily: 'Consolas, monospace' }}>Personality&nbsp;</span>
-                            <select className="border focus:outline-none focus:bg-neutral-800 border-neutral-700 bg-neutral-700 rounded-3xl me-4 h-10 w-64" value={personality} onChange={(e) => setPersonality(e.target.value)}>
-                                <option value="markiai">Marki AI</option>
-                                <option value="vinhyet">Vinh yet</option>
-                                <option value="sieumatday">Siêu mất dạy</option>
-                            </select>
-                        </>
-                    ) : (
-                        <>
-                        <div className="flex flex-row justify-end w-full">
-                            <button 
-                                onClick={() => setExpand(!expand)}
-                                className="select-none overflow-hidden shrink-0 text-center transition text-black bg-green-500 disabled:bg-white hover:opacity-70 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer h-[45px] w-[45px] rounded-full"
-                            >
-                                ⇲
-                            </button>
-                        </div>
-                        </>
-
-                    )}
-                </div>
-                <div className="col-span-full">
-                    <p className="text-sm font-light tracking-wide text-neutral-500">msg from vthanhduong: temporary testing environment — features are incomplete and may break spectacularly.</p>
-                </div>
-                {(secret && expand) && (
-                    <div className="col-span-full">
-                        <span className="whitespace-pre xl:whitespace-normal" style={{ fontFamily: 'Consolas, monospace' }}>Context&nbsp;</span>
-                        <div className="">
-                            <textarea
-                                className="mt-2 rounded-3xl bg-gray-700 border border-gray-600 w-full h-[45px] focus:h-72 transition-all p-2 focus:outline-none focus:bg-gray-800 hide-scrollbar"
-                                value={tempContext}
-                                onChange={(e) => setTempContext(e.target.value)}
-                            />
-                            <button
-                                type="button"
-                                className="rounded-3xl bg-green-600 hover:bg-green-700 cursor-pointer text-white py-2 px-4 mt-2 w-full transition-colors duration-300"
-                                onClick={() => setContext(tempContext)}
-                            >
-                                Save
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Messages Section */}
-            <div 
-                ref={containerRef}
-                className='flex-1 flex flex-col relative overflow-hidden'
-                onClick={handleClick}
-            >
-                <div ref={messagesWrapperRef} className='flex-1 overflow-y-auto hide-scrollbar'>
-                    <div className='flex flex-col gap-y-6 text-slate-100 py-6 px-4 pb-6'>
-                    {messages.map((message, index) => {
-                        const isUser = message.sender === 'you';
-                        return (
-                            <div key={message.id ?? index} className={`flex ${isUser ? 'justify-end' : 'justify-start'} w-full items-end`}>
-                                <div
-                                    className={`${isUser ? ' bg-neutral-600 text-white shadow-[0_0_20px_rgba(15,23,42,0.55)] w-fit max-w-full sm:max-w-3xl ml-auto' : 'text-slate-200 w-full'} py-1 px-5 rounded-3xl`}
-                                    onContextMenu={(e) => handleContextMenu(e, message.content, index)}
-                                    onClick={handleClick}
-                                    onTouchStart={(e) => handleTouchStart(e, message.content, index)}
-                                    onTouchEnd={handleTouchEnd}
-                                    onTouchCancel={handleTouchCancel}
-                                >
-                                    <div className='text-base wrap-anywhere leading-relaxed tracking-wide'>
-                                        <LLMMessageRenderer content={message.content} isStreaming={false} />
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
-                    {(isStreaming && !streamingMessage) && (
-                        <div className="flex justify-start">
-                            <div className='py-2 px-3 flex flex-row items-center gap-x-2 text-slate-400'>
-                                <div className="dot-typing">
-                                    <span></span>
-                                    <span></span>
-                                    <span></span>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    {/* Streaming message */}
-                    {isStreaming && streamingMessage && (
-                        <div className="flex justify-start">
-                            <div className='text-slate-200 w-full py-1 px-5 rounded-3xl'>
-                                <div className='text-base leading-relaxed tracking-wide'>
-                                    <LLMMessageRenderer content={streamingMessage} isStreaming={true} />
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                </div>
-            </div>
-            
-            {/* Context Menu */}
-            {visible && (
-                <ul
-                    className="absolute bg-neutral-900/95 border border-neutral-700 rounded-xl w-48 z-50 text-slate-100 shadow-2xl"
-                    style={{ top: position.y, left: position.x }}
-                >
-                    <li className="px-4 py-2 hover:bg-neutral-800 cursor-pointer border-b border-neutral-800/80 transition" onClick={() => copyToClipboard()}>Copy</li>
-                    {/* Show Retry only for last AI message */}
-                    {selectedMessageIndex !== null && 
-                     selectedMessageIndex === messages.length - 1 && 
-                     messages[selectedMessageIndex]?.sender === 'ai' && 
-                     !isStreaming && (
-                        <li className="px-4 py-2 hover:bg-neutral-800 cursor-pointer border-b border-neutral-800/80 transition text-yellow-400" onClick={() => retryLastAIResponse()}>Retry</li>
-                    )}
-                    <li className="px-4 py-2 hover:bg-neutral-800 cursor-pointer transition" onClick={() => deleteFromSelected()}>Delete from here</li>
-                </ul>
-            )}
-        </div>
-
-        {/* Input Section */}
-        <div className='flex items-end gap-3 p-4 backdrop-blur-sm w-full border-t border-neutral-700'>
-            <textarea
-                ref={textareaRef}
-                rows={1}
-                value={localInput}
-                onChange={handleInputChange}
-                onKeyPress={handleKeyPress}
-                placeholder={isStreaming ? "Please wait until the response is finished..." : "Type your message..."}
-                disabled={isStreaming}
-                className="border border-slate-800/80 focus:outline-none bg-neutral-900/70 rounded-3xl px-5 py-3 w-full text-slate-100 placeholder-slate-500 resize-none min-h-12 hide-scrollbar disabled:opacity-50 disabled:cursor-not-allowed"
-            />
-            <button 
-                onClick={handleSendMessage}
-                disabled={!localInput.trim() || isStreaming}
-                className="select-none overflow-hidden shrink-0 text-center transition text-black bg-green-500 disabled:bg-white hover:opacity-70 disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer h-[45px] w-[45px] rounded-full"
-            >
-                🠉
-            </button>
-        </div>
-    </div>
-    );
+			<footer className="border-t border-neutral-700 bg-neutral-900/70 px-4 py-4">
+				<div className="flex items-end gap-3">
+								<textarea
+						ref={textareaRef}
+						rows={1}
+						value={inputValue}
+						onChange={(event) => {
+							setInputValue(event.target.value);
+							adjustTextareaHeight(event.currentTarget);
+						}}
+						onKeyDown={handleTextareaKeyDown}
+						placeholder={isStreaming ? 'Đang trả lời...' : 'Nhập tin nhắn...'}
+						disabled={isStreaming}
+									className="min-h-12 flex-1 resize-none rounded-3xl border border-neutral-700 bg-neutral-900/80 px-5 py-3 text-sm text-white placeholder:text-neutral-500 focus:border-green-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+					/>
+					<button
+						type="button"
+						onClick={handleSend}
+						disabled={!inputValue.trim() || isStreaming}
+									className="h-12 w-12 shrink-0 rounded-full bg-green-500 text-xl text-black transition hover:bg-green-400 disabled:cursor-not-allowed disabled:opacity-60"
+					>
+						➤
+					</button>
+				</div>
+			</footer>
+		</div>
+	);
 };

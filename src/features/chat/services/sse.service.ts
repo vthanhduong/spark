@@ -1,13 +1,38 @@
 import { env } from '../../../configs/environment';
-import type { IMessage } from '../types/message.type';
 
-export interface SSEEvent {
-    type: 'start' | 'chunk' | 'end' | 'error';
-    content?: string;
+export interface StreamOptions {
+    message: string;
     username?: string;
-    message?: string;
-    is_final?: boolean;
+    personalityId?: string;
+    conversationId?: string;
+    messageHistory?: Array<{ sender: string; content: string }>;
 }
+
+export interface SSEStartEvent {
+    type: 'start';
+    conversation_id?: string;
+    user_message_id?: string;
+}
+
+export interface SSEChunkEvent {
+    type: 'chunk';
+    conversation_id?: string;
+    content: string;
+}
+
+export interface SSEEndEvent {
+    type: 'end';
+    conversation_id?: string;
+    content: string;
+    ai_message_id?: string;
+}
+
+export interface SSEErrorEvent {
+    type: 'error';
+    message: string;
+}
+
+type SSEPayload = SSEStartEvent | SSEChunkEvent | SSEEndEvent | SSEErrorEvent;
 
 export class SSEService {
     private abortController: AbortController | null = null;
@@ -17,20 +42,19 @@ export class SSEService {
         this.apiUrl = env.API_URL || 'http://localhost:8000';
     }
 
-    /**
-     * Send a message and stream the response using SSE
-     */
-    async streamMessage(
-        message: string,
-        context: string,
-        username: string,
-        messageHistory: IMessage[]
-    ): Promise<void> {
-        // Cancel any existing stream
-        this.cancelStream();
+    async streamMessage(options: StreamOptions): Promise<void> {
+        const { message, username, personalityId, conversationId, messageHistory } = options;
 
-        // Create new AbortController for this request
+        this.cancelStream();
         this.abortController = new AbortController();
+
+        const payload: Record<string, unknown> = { message };
+        if (username) payload.username = username;
+        if (personalityId) payload.personality_id = personalityId;
+        if (conversationId) payload.conversation_id = conversationId;
+        if (messageHistory && messageHistory.length) {
+            payload.message_history = messageHistory;
+        }
 
         try {
             const response = await fetch(`${this.apiUrl}/api/chat/stream`, {
@@ -38,13 +62,9 @@ export class SSEService {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    message,
-                    context,
-                    username,
-                    message_history: messageHistory
-                }),
-                signal: this.abortController.signal
+                body: JSON.stringify(payload),
+                signal: this.abortController.signal,
+                credentials: 'include',
             });
 
             if (!response.ok) {
@@ -62,37 +82,37 @@ export class SSEService {
 
             while (true) {
                 const { done, value } = await reader.read();
-                
                 if (done) break;
-                
+
                 buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n\n');
-                
-                // Keep the last incomplete line in buffer
-                buffer = lines.pop() || '';
-                
-                for (const line of lines) {
-                    if (line.startsWith('event:')) {
-                        const eventMatch = line.match(/event: (\w+)\ndata: (.+)/s);
-                        if (eventMatch) {
-                            const [, eventType, data] = eventMatch;
-                            const parsedData: SSEEvent = JSON.parse(data);
-                            
-                            switch (eventType) {
-                                case 'start':
-                                    this.onStreamStart?.(parsedData);
-                                    break;
-                                case 'chunk':
-                                    this.onStreamChunk?.(parsedData.content || '');
-                                    break;
-                                case 'end':
-                                    this.onStreamEnd?.(parsedData.content || '');
-                                    break;
-                                case 'error':
-                                    this.onStreamError?.(parsedData.message || 'Unknown error');
-                                    break;
-                            }
+                const events = buffer.split('\n\n');
+                buffer = events.pop() || '';
+
+                for (const rawEvent of events) {
+                    const eventMatch = rawEvent.match(/event: (\w+)\n(?:data: (.+))/s);
+                    if (!eventMatch) continue;
+
+                    const [, eventType, data] = eventMatch;
+                    try {
+                        const parsed: SSEPayload = JSON.parse(data);
+                        switch (eventType) {
+                            case 'start':
+                                this.onStreamStart?.(parsed as SSEStartEvent);
+                                break;
+                            case 'chunk':
+                                this.onStreamChunk?.(parsed as SSEChunkEvent);
+                                break;
+                            case 'end':
+                                this.onStreamEnd?.(parsed as SSEEndEvent);
+                                break;
+                            case 'error':
+                                this.onStreamError?.((parsed as SSEErrorEvent).message);
+                                break;
+                            default:
+                                break;
                         }
+                    } catch (error) {
+                        console.error('Failed to parse SSE payload', error);
                     }
                 }
             }
@@ -108,9 +128,6 @@ export class SSEService {
         }
     }
 
-    /**
-     * Cancel the current stream
-     */
     cancelStream() {
         if (this.abortController) {
             this.abortController.abort();
@@ -118,16 +135,12 @@ export class SSEService {
         }
     }
 
-    /**
-     * Check if currently streaming
-     */
     isStreaming(): boolean {
         return this.abortController !== null;
     }
 
-    // Event handlers - set these from outside
-    onStreamStart?: (event: SSEEvent) => void;
-    onStreamChunk?: (chunk: string) => void;
-    onStreamEnd?: (fullResponse: string) => void;
-    onStreamError?: (error: string) => void;
+    onStreamStart?: (event: SSEStartEvent) => void;
+    onStreamChunk?: (event: SSEChunkEvent) => void;
+    onStreamEnd?: (event: SSEEndEvent) => void;
+    onStreamError?: (message: string) => void;
 }

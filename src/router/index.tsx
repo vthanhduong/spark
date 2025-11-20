@@ -11,10 +11,10 @@ export const router = createBrowserRouter([
                 path: "",
                 element: <Chat />
             },
-            {
-                path: "secret/:secret",
-                element: <Chat />,
-            }
+            // {
+            //     path: "secret/:secret",
+            //     element: <Chat />,
+            // }
         ]
     }
 ]);
