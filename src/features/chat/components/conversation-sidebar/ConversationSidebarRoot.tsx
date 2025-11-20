@@ -70,7 +70,7 @@ export const ConversationSidebar = () => {
   };
 
   return (
-    <aside className="hidden w-80 shrink-0 border-r border-border bg-background/40 md:flex md:flex-col">
+    <aside className="shrink-0 border-r border-border bg-background/40 flex flex-col">
       <div className="flex flex-row items-center gap-x-2 p-4">
         <img src="/logo.png" className="w-10 h-10"/>
         <span className="font-semibold">spark by vthanhduong</span>

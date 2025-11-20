@@ -278,7 +278,6 @@ export const MessagePanel = () => {
         onOpenLogin={handleOpenLogin}
         onLogout={handleLogout}
       />
-
       {showContextEditor && conversationDetail && userRole === 'quest_expert' && (
         <div className="px-4">
           <ContextEditorPanel

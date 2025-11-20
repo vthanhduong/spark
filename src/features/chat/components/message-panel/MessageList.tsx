@@ -52,7 +52,7 @@ export const MessageList = memo(
           className="flex h-full flex-col gap-4 overflow-y-auto px-4 py-6"
         >
           {messages.length === 0 && !isStreaming && (
-            <div className="flex h-full items-center justify-center text-center text-3xl text-muted-foreground">
+            <div className="flex h-[30vh] items-center justify-center text-center text-4xl font-semibold text-muted-foreground">
               <p>Chào bạn, Hãy cùng trò chuyện ngay!</p>
             </div>
           )}

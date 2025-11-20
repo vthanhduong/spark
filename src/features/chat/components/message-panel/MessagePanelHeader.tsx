@@ -1,3 +1,4 @@
+import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { PersonalityOption } from '../../constants/personalities';
 import { Button } from '@/components/ui/button';
 
@@ -19,9 +20,9 @@ interface MessagePanelHeaderProps {
 export const MessagePanelHeader = ({
   isAuthenticated,
   sessionUserEmail,
-  personalities,
-  activePersonalitySlug,
-  onPersonalityChange,
+  // personalities,
+  // activePersonalitySlug,
+  // onPersonalityChange,
   canEditContext,
   isContextEditorOpen,
   onToggleContextEditor,
@@ -33,7 +34,8 @@ export const MessagePanelHeader = ({
   <header className="border-b border-border/80 bg-background/80 px-4 py-3 backdrop-blur supports-backdrop-filter:bg-background/60">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-3 hidd">
-          <div className="hidden">
+          <SidebarTrigger/>
+          {/* <div className="hidden">
             <label className="items-center gap-2 text-sm text-muted-foreground lg:flex">
               <span>Nhân cách</span>
               <select
@@ -51,7 +53,7 @@ export const MessagePanelHeader = ({
                 ))}
               </select>
             </label>
-          </div>
+          </div> */}
           {canEditContext && (
             <Button
               type="button"
