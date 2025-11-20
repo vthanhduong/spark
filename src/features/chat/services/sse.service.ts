@@ -5,7 +5,6 @@ export interface StreamOptions {
     username?: string;
     personalitySlug?: string;
     conversationId?: string;
-    messageHistory?: Array<{ sender: string; content: string }>;
 }
 
 export interface SSEStartEvent {
@@ -43,7 +42,7 @@ export class SSEService {
     }
 
     async streamMessage(options: StreamOptions): Promise<void> {
-        const { message, username, personalitySlug, conversationId, messageHistory } = options;
+    const { message, username, personalitySlug, conversationId } = options;
 
         this.cancelStream();
         this.abortController = new AbortController();
@@ -52,9 +51,6 @@ export class SSEService {
         if (username) payload.username = username;
     if (personalitySlug) payload.personality_slug = personalitySlug;
         if (conversationId) payload.conversation_id = conversationId;
-        if (messageHistory && messageHistory.length) {
-            payload.message_history = messageHistory;
-        }
 
         try {
             const response = await fetch(`${this.apiUrl}/api/chat/stream`, {

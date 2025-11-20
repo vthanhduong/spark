@@ -8,6 +8,7 @@ export interface SessionUser {
   id: string;
   email: string;
   role: UserRole;
+  display_name: string | null;
 }
 
 export type SessionStatus = 'idle' | 'loading' | 'authenticated' | 'unauthenticated';
@@ -20,6 +21,7 @@ interface SessionState {
   logout: () => Promise<void>;
   fetchSession: () => Promise<void>;
   setUser: (user: SessionUser | null) => void;
+  updateDisplayName: (displayName: string) => Promise<SessionUser>;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -68,6 +70,27 @@ export const useSessionStore = create<SessionState>((set) => ({
       } else {
         set({ user: null, status: 'unauthenticated', error: 'Không thể xác thực phiên làm việc.' });
       }
+    }
+  },
+
+  updateDisplayName: async (displayName: string) => {
+    const trimmed = displayName.trim();
+    if (!trimmed) {
+      throw new ApiError('Tên hiển thị không hợp lệ', 422, 'Tên hiển thị không được để trống.');
+    }
+
+    try {
+      const response = await apiJson<SessionUser>('/api/users/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ display_name: trimmed }),
+      });
+      set({ user: response, status: 'authenticated', error: null });
+      return response;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError('Cập nhật tên hiển thị thất bại', 500, 'Không thể cập nhật tên hiển thị.');
     }
   },
 }));

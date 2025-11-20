@@ -53,6 +53,10 @@ body {
   background-color: #000;
 }
 
+button {
+  cursor: pointer;
+}
+
 .wrap-anywhere {
   overflow-wrap: anywhere;
   word-break: break-word;

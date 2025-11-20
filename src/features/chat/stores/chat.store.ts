@@ -92,6 +92,7 @@ interface ChatStoreState {
     updateContextOverride: () => Promise<void>;
     updateConversationPersonality: (personalityId: string) => Promise<void>;
     refreshConversationMetadata: (conversationId: string) => Promise<void>;
+    deleteConversation: (conversationId: string) => Promise<void>;
     resetAfterLogout: () => void;
 }
 
@@ -299,7 +300,6 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
             throw new Error('Vui lòng chọn nhân cách cho cuộc trò chuyện.');
         }
 
-        const previousMessages = state.messages;
         const tempId = `temp-${Date.now()}`;
         const now = new Date().toISOString();
 
@@ -322,11 +322,6 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
             streamingMessage: '',
             pendingUserMessageTempId: tempId,
         }));
-
-        const messageHistory =
-            state.authMode === 'guest'
-                ? previousMessages.map((msg) => ({ sender: msg.sender, content: msg.content }))
-                : undefined;
 
         let createdConversationId: string | null = null;
         let activeConversationId = state.selectedConversationId ?? null;
@@ -351,7 +346,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         };
 
         service.onStreamChunk = (event) => {
-            set({ streamingMessage: event.content });
+            set((current) => ({
+                streamingMessage: `${current.streamingMessage}${event.content}`,
+            }));
         };
 
         service.onStreamEnd = (event: SSEEndEvent) => {
@@ -397,7 +394,6 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
             username: state.username || 'Anonymous',
             personalitySlug,
             conversationId: state.selectedConversationId || undefined,
-            messageHistory,
         });
 
         if (state.authMode === 'authenticated' && activeConversationId) {
@@ -498,6 +494,31 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
             await get().refreshConversationMetadata(detail.id);
         } catch (error) {
             console.error('Không thể cập nhật personality', error);
+            throw error;
+        }
+    },
+
+    deleteConversation: async (conversationId: string) => {
+        const state = get();
+        if (state.authMode !== 'authenticated') return;
+        try {
+            await apiFetch(`/api/conversations/${conversationId}`, {
+                method: 'DELETE',
+            });
+            const wasSelected = get().selectedConversationId === conversationId;
+            set((current) => ({
+                conversations: current.conversations.filter((item) => item.id !== conversationId),
+                conversationDetail:
+                    current.conversationDetail && current.conversationDetail.id === conversationId
+                        ? null
+                        : current.conversationDetail,
+                conversationSkip: Math.max(0, current.conversationSkip - 1),
+            }));
+            if (wasSelected) {
+                await get().selectConversation(null);
+            }
+        } catch (error) {
+            console.error('Không thể xoá hội thoại', error);
             throw error;
         }
     },

@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 
+import { ApiError } from '../../../lib/api';
 import { useChatStore } from '../stores/chat.store';
 import { useSessionStore } from '../../auth/stores/session.store';
 import { LLMMessageRenderer } from './LLMMessageRenderer';
@@ -46,8 +47,10 @@ export const MessagePanel = () => {
 	const login = useSessionStore((state) => state.login);
 	const logout = useSessionStore((state) => state.logout);
 	const fetchSession = useSessionStore((state) => state.fetchSession);
+	const updateDisplayName = useSessionStore((state) => state.updateDisplayName);
 
 	const userRole = sessionUser?.role;
+	const sessionIdentity = sessionUser?.display_name || sessionUser?.email || '';
 
 	const [inputValue, setInputValue] = useState('');
 	const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -67,6 +70,7 @@ export const MessagePanel = () => {
 	const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
 	const [settingsUsername, setSettingsUsername] = useState('');
 	const [settingsError, setSettingsError] = useState<string | null>(null);
+	const [isSavingSettings, setIsSavingSettings] = useState(false);
 
 	const isAuthenticated = sessionStatus === 'authenticated';
 	const isSessionLoading = sessionStatus === 'loading';
@@ -81,7 +85,7 @@ export const MessagePanel = () => {
 	useEffect(() => {
 		if (isAuthenticated && sessionUser) {
 			if (authMode !== 'authenticated') {
-				setAuthMode('authenticated', sessionUser.email);
+				setAuthMode('authenticated', sessionUser.display_name || sessionUser.email);
 				clearMessages();
 				void selectConversation(null);
 			}
@@ -153,20 +157,41 @@ export const MessagePanel = () => {
 		setSettingsError(null);
 	};
 
-	const handleSaveSettings = () => {
+	const handleSaveSettings = async () => {
 		const trimmed = settingsUsername.trim();
 		if (!trimmed) {
 			setSettingsError('Tên hiển thị không được để trống.');
 			return;
 		}
-		setUsername(trimmed);
-		setIsSettingsDialogOpen(false);
+
+		setIsSavingSettings(true);
 		setSettingsError(null);
+		try {
+			const updatedUser = await updateDisplayName(trimmed);
+			setUsername(updatedUser.display_name ?? trimmed);
+			setIsSettingsDialogOpen(false);
+		} catch (error) {
+			if (error instanceof ApiError) {
+				if (typeof error.data === 'string' && error.data.trim().length > 0) {
+					setSettingsError(error.data);
+				} else if (error.status === 422) {
+					setSettingsError('Tên hiển thị không được để trống.');
+				} else {
+					setSettingsError('Không thể lưu tên hiển thị. Vui lòng thử lại.');
+				}
+			} else {
+				setSettingsError('Không thể lưu tên hiển thị. Vui lòng thử lại.');
+			}
+			console.error('Không thể cập nhật tên hiển thị', error);
+		} finally {
+			setIsSavingSettings(false);
+		}
 	};
 
 	const messageContainerRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const shouldStickToBottomRef = useRef(true);
+	const wasStreamingRef = useRef(isStreaming);
 
 	const activePersonalitySlug = useMemo(() => {
 		if (conversationDetail) {
@@ -176,13 +201,17 @@ export const MessagePanel = () => {
 	}, [conversationDetail, selectedPersonalitySlug]);
 
 	const handleSend = async () => {
-		if (!inputValue.trim()) return;
+		const currentValue = inputValue;
+		const trimmed = currentValue.trim();
+		if (!trimmed) return;
+		setInputValue('');
+		adjustTextareaHeight(textareaRef.current);
 		try {
-			await sendMessage(inputValue);
-			setInputValue('');
-			adjustTextareaHeight();
+			await sendMessage(trimmed);
 		} catch (error) {
 			console.error('Không thể gửi tin nhắn', error);
+			setInputValue(currentValue);
+			adjustTextareaHeight(textareaRef.current);
 		}
 	};
 
@@ -203,6 +232,13 @@ export const MessagePanel = () => {
 	}, [inputValue]);
 
 	useEffect(() => {
+		if (wasStreamingRef.current && !isStreaming) {
+			textareaRef.current?.focus();
+		}
+		wasStreamingRef.current = isStreaming;
+	}, [isStreaming]);
+
+	useEffect(() => {
 		const container = messageContainerRef.current;
 		if (!container) return;
 		if (shouldStickToBottomRef.current) {
@@ -220,7 +256,7 @@ export const MessagePanel = () => {
 		if (event.key === 'Enter' && !event.shiftKey) {
 			event.preventDefault();
 			if (!isStreaming) {
-				handleSend();
+				void handleSend();
 			}
 		}
 	};
@@ -322,7 +358,7 @@ export const MessagePanel = () => {
 			<header className="border-b border-neutral-700 bg-neutral-900/70 px-4 py-3 backdrop-blur">
 				<div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
 					<div className="flex flex-wrap items-center gap-3">
-						<label className="flex items-center gap-2 text-sm text-neutral-300">
+						<label className="items-center gap-2 text-sm text-neutral-300 hidden">
 							<span>Nhân cách</span>
 							<select
 								value={activePersonalitySlug ?? ''}
@@ -339,11 +375,22 @@ export const MessagePanel = () => {
 								))}
 							</select>
 						</label>
+						{conversationDetail && userRole === 'quest_expert' && (
+					<div>
+						<button
+							type="button"
+							onClick={() => setShowContextEditor((prev) => !prev)}
+							className="rounded-full border border-green-400 px-4 py-1 text-sm font-semibold text-green-400 transition hover:bg-green-400/10"
+						>
+							{showContextEditor ? 'Ẩn context' : 'Chỉnh sửa context'}
+						</button>
+					</div>
+				)}
 					</div>
 					<div className="flex flex-wrap items-center gap-2 text-sm text-neutral-300">
 						<span className="text-xs text-neutral-400">
 							{isAuthenticated
-								? `Đã đăng nhập${sessionUser?.email ? `: ${sessionUser.email}` : ''}`
+								? `Đã đăng nhập${sessionIdentity ? `: ${sessionIdentity}` : ''}`
 								: 'Chế độ khách'}
 						</span>
 						{isAuthenticated ? (
@@ -375,17 +422,7 @@ export const MessagePanel = () => {
 						)}
 					</div>
 				</div>
-				{conversationDetail && userRole === 'quest_expert' && (
-					<div className="mt-3">
-						<button
-							type="button"
-							onClick={() => setShowContextEditor((prev) => !prev)}
-							className="rounded-full border border-green-400 px-4 py-1 text-sm font-semibold text-green-400 transition hover:bg-green-400/10"
-						>
-							{showContextEditor ? 'Ẩn context' : 'Chỉnh sửa context'}
-						</button>
-					</div>
-				)}
+				
 				{showContextEditor && conversationDetail && userRole === 'quest_expert' && (
 					<div className="mt-3 space-y-3 rounded-2xl border border-neutral-700 bg-neutral-900/80 p-4">
 						<textarea
@@ -420,6 +457,15 @@ export const MessagePanel = () => {
 					onScroll={handleScroll}
 					className="flex h-full flex-col gap-4 overflow-y-auto px-4 py-6"
 				>
+					{
+						messages.length == 0 && (
+							<div className="w-full h-full flex items-center justify-center">
+								<div>
+									<p className="text-4xl">Chào bạn, Hãy cùng trò chuyện ngay!</p>
+								</div>
+							</div>
+						)
+					}
 					{isLoadingOlderMessages && (
 						<div className="text-center text-xs text-neutral-400">Đang tải thêm tin nhắn...</div>
 					)}
@@ -430,9 +476,9 @@ export const MessagePanel = () => {
 								<div
 									onContextMenu={(event) => handleContextMenu(event, index, message.content)}
 									className={clsx(
-										'max-w-full rounded-3xl px-5 py-3 text-sm shadow-sm sm:max-w-3xl',
+										'max-w-full rounded-3xl px-5 py-1 text-sm shadow-sm',
 										isUser
-											? 'bg-green-500/90 text-black'
+											? 'bg-green-400/90 text-black'
 											: 'bg-neutral-800/80 text-neutral-100',
 									)}
 								>
@@ -449,7 +495,7 @@ export const MessagePanel = () => {
 						</div>
 					)}
 					{isStreaming && !streamingMessage && (
-						<div className="flex justify-start text-sm text-neutral-400">AI đang trả lời...</div>
+						<div className="flex justify-start text-sm text-neutral-400">Đang trả lời...</div>
 					)}
 				</div>
 
@@ -485,7 +531,7 @@ export const MessagePanel = () => {
 							adjustTextareaHeight(event.currentTarget);
 						}}
 						onKeyDown={handleTextareaKeyDown}
-						placeholder={isStreaming ? 'Đang trả lời...' : 'Nhập tin nhắn...'}
+						placeholder={isStreaming ? 'Vui lòng chờ khi phản hồi hoàn thành!' : 'Nhập tin nhắn...'}
 						disabled={isStreaming}
 									className="min-h-12 flex-1 resize-none rounded-3xl border border-neutral-700 bg-neutral-900/80 px-5 py-3 text-sm text-white placeholder:text-neutral-500 focus:border-green-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
 					/>
@@ -522,7 +568,7 @@ export const MessagePanel = () => {
 							className="mt-5 space-y-4"
 							onSubmit={(event) => {
 								event.preventDefault();
-								handleSaveSettings();
+								void handleSaveSettings();
 							}}
 						>
 							<div className="space-y-2">
@@ -539,7 +585,8 @@ export const MessagePanel = () => {
 											setSettingsError(null);
 										}
 									}}
-									className="w-full rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-sm text-white focus:border-green-400 focus:outline-none"
+									disabled={isSavingSettings}
+									className="w-full rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-3 text-sm text-white focus:border-green-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
 									placeholder="Nhập tên mới của bạn"
 								/>
 								{settingsError && <p className="text-xs text-red-400">{settingsError}</p>}
@@ -554,9 +601,10 @@ export const MessagePanel = () => {
 								</button>
 								<button
 									type="submit"
-									className="rounded-full bg-green-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-green-400"
+									disabled={isSavingSettings}
+									className="rounded-full bg-green-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-green-400 disabled:cursor-not-allowed disabled:opacity-60"
 								>
-									Lưu
+									{isSavingSettings ? 'Đang lưu...' : 'Lưu'}
 								</button>
 							</div>
 						</form>
