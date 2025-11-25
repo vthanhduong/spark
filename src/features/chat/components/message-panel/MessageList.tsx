@@ -9,7 +9,6 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { useSessionStore } from '@/features/auth/stores/session.store';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface MessageListProps {
@@ -20,6 +19,7 @@ interface MessageListProps {
   onScroll: (event: React.UIEvent<HTMLDivElement>) => void;
   onDeleteFromIndex: (index: number) => void;
   isLoadingOlderMessages: boolean;
+  isAuthenticated: boolean;
 }
 
 export const MessageList = memo(
@@ -31,9 +31,9 @@ export const MessageList = memo(
     onScroll,
     onDeleteFromIndex,
     isLoadingOlderMessages,
+    isAuthenticated,
   }: MessageListProps) => {
-    const sessionStore = useSessionStore((state) => state.status);
-    const isAuthenticatd = sessionStore === "authenticated";
+    
     const handleCopy = async (content: string) => {
       try {
         await navigator.clipboard.writeText(content);
@@ -70,7 +70,7 @@ export const MessageList = memo(
             return (
               <div key={message.id} className={`flex w-full ${alignmentClass}`}>
                 {
-                  isAuthenticatd ? (
+                  isAuthenticated ? (
                   <ContextMenu>
                     <ContextMenuTrigger asChild>
                       <div className={`max-w-full rounded-3xl px-5 py-2 text-sm shadow-sm ${bubbleClass}`}>

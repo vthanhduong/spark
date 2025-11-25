@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ApiError } from '@/lib/api';
@@ -44,7 +44,6 @@ export const MessagePanel = () => {
 
   const userRole = sessionUser?.role;
 
-  const [inputValue, setInputValue] = useState('');
   const [showContextEditor, setShowContextEditor] = useState(false);
   const [isSavingContext, setIsSavingContext] = useState(false);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
@@ -60,7 +59,6 @@ export const MessagePanel = () => {
   const loginErrorMessage = sessionError;
 
   const messageContainerRef = useRef<HTMLDivElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
 
   useEffect(() => {
@@ -103,22 +101,6 @@ export const MessagePanel = () => {
     return selectedPersonalitySlug;
   }, [conversationDetail, selectedPersonalitySlug]);
 
-  const adjustTextareaHeight = (element?: HTMLTextAreaElement | null) => {
-    const textarea = element ?? textareaRef.current;
-    if (!textarea) return;
-    const minHeight = 38;
-    const maxHeight = 240;
-    textarea.style.height = 'auto';
-    const measured = textarea.scrollHeight || minHeight;
-    const next = Math.min(Math.max(measured, minHeight), maxHeight);
-    textarea.style.height = `${next}px`;
-    textarea.style.overflowY = measured > maxHeight ? 'auto' : 'hidden';
-  };
-
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [inputValue]);
-
   useEffect(() => {
     const container = messageContainerRef.current;
     if (!container) return;
@@ -128,56 +110,44 @@ export const MessagePanel = () => {
   }, [messages, streamingMessage]);
 
   useEffect(() => {
-    if (!isStreaming) {
-      textareaRef.current?.focus();
-    } else {
+    if (isStreaming) {
       shouldStickToBottomRef.current = true;
     }
   }, [isStreaming]);
 
-  const handleSend = async () => {
-    if (isStreaming) return;
-    const trimmed = inputValue.trim();
-    if (!trimmed) return;
-
-    setInputValue('');
-    adjustTextareaHeight(textareaRef.current);
-
-    try {
-      await sendMessage(trimmed);
-    } catch (error) {
-      console.error('Không thể gửi tin nhắn', error);
-      toast.error('Không thể gửi tin nhắn. Vui lòng thử lại.');
-      setInputValue(trimmed);
-      adjustTextareaHeight(textareaRef.current);
-    }
-  };
-
-  const handleTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      if (!isStreaming) {
-        void handleSend();
+  const handleSendMessage = useCallback(
+    async (content: string) => {
+      try {
+        await sendMessage(content);
+      } catch (error) {
+        console.error('Không thể gửi tin nhắn', error);
+        toast.error('Không thể gửi tin nhắn. Vui lòng thử lại.');
+        throw error;
       }
-    }
-  };
+    },
+    [sendMessage],
+  );
 
-  const handleScroll = async (event: React.UIEvent<HTMLDivElement>) => {
-    const target = event.currentTarget;
-    const nearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < SCROLL_BOTTOM_THRESHOLD;
-    shouldStickToBottomRef.current = nearBottom;
+  const handleScroll = useCallback(
+    async (event: React.UIEvent<HTMLDivElement>) => {
+      const target = event.currentTarget;
+      const nearBottom =
+        target.scrollHeight - target.scrollTop - target.clientHeight < SCROLL_BOTTOM_THRESHOLD;
+      shouldStickToBottomRef.current = nearBottom;
 
-    if (target.scrollTop <= 0 && hasMoreMessages && !isLoadingOlderMessages) {
-      const previousHeight = target.scrollHeight;
-      await loadOlderMessages();
-      requestAnimationFrame(() => {
-        const container = messageContainerRef.current;
-        if (!container) return;
-        const newHeight = container.scrollHeight;
-        container.scrollTop = newHeight - previousHeight;
-      });
-    }
-  };
+      if (target.scrollTop <= 0 && hasMoreMessages && !isLoadingOlderMessages) {
+        const previousHeight = target.scrollHeight;
+        await loadOlderMessages();
+        requestAnimationFrame(() => {
+          const container = messageContainerRef.current;
+          if (!container) return;
+          const newHeight = container.scrollHeight;
+          container.scrollTop = newHeight - previousHeight;
+        });
+      }
+    },
+    [hasMoreMessages, isLoadingOlderMessages, loadOlderMessages],
+  );
 
   const handlePersonalityChange = (value: string) => {
     if (conversationDetail && authMode === 'authenticated') {
@@ -297,19 +267,10 @@ export const MessagePanel = () => {
         onScroll={handleScroll}
         onDeleteFromIndex={deleteMessagesFromIndex}
         isLoadingOlderMessages={isLoadingOlderMessages}
+        isAuthenticated={isAuthenticated}
       />
 
-      <MessageComposer
-        value={inputValue}
-        onChange={(value) => {
-          setInputValue(value);
-          adjustTextareaHeight(textareaRef.current);
-        }}
-        onSend={handleSend}
-        isStreaming={isStreaming}
-        textareaRef={textareaRef}
-        onKeyDown={handleTextareaKeyDown}
-      />
+      <MessageComposer onSend={handleSendMessage} isStreaming={isStreaming} />
 
       <SettingsDialog
         open={isSettingsDialogOpen}
