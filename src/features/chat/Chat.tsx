@@ -33,10 +33,9 @@ export const Chat = () => {
             });
         }
 
-        // If URL is root but a conversation is selected, update URL
-        if (!conversationId && selectedConversationId) {
-            navigate(`/conversation/${selectedConversationId}`, { replace: true });
-        }
+        // Don't auto-redirect to conversation when user explicitly navigated to root
+        // Only sync URL if we have a selectedConversation AND we're not at root
+        // This allows "New conversation" to work properly
 
         // If URL is root and no conversation selected, that's fine (new chat)
     }, [conversationId, selectedConversationId, isAuthenticated, authMode, selectConversation, navigate]);

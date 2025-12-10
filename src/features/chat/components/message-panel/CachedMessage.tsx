@@ -11,7 +11,7 @@ interface CachedMessageProps {
  * CachedMessage component that memoizes the rendered output
  * to prevent re-parsing and re-rendering when parent re-renders
  */
-const CachedMessageComponent = ({ messageId, content, isStreaming }: CachedMessageProps) => {
+const CachedMessageComponent = ({ content, isStreaming }: CachedMessageProps) => {
   // Memoize the rendered message based on content and streaming state
   const renderedContent = useMemo(() => {
     return <LLMMessageRenderer content={content} isStreaming={isStreaming} />;
