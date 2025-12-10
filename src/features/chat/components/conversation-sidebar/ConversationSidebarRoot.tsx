@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { EllipsisVertical, Loader2, MessageSquarePlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useShallow } from 'zustand/react/shallow';
@@ -58,6 +59,7 @@ export const ConversationSidebar = () => {
   const isAuthenticated = useSessionStore((state) => state.status) === "authenticated";
   const [deleteTarget, setDeleteTarget] = useState<ConversationSummary | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const navigate = useNavigate();
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
@@ -65,6 +67,15 @@ export const ConversationSidebar = () => {
     if (authMode !== 'authenticated') return;
     fetchConversations(true);
   }, [authMode, fetchConversations]);
+
+  const handleConversationClick = (convId: string) => {
+    navigate(`/conversation/${convId}`);
+  };
+
+  const handleNewConversation = () => {
+    selectConversation(null);
+    navigate('/');
+  };
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
     const target = event.currentTarget;
@@ -106,7 +117,7 @@ export const ConversationSidebar = () => {
         </div>
         <Button
           size="sm"
-          onClick={() => selectConversation(null)}
+          onClick={handleNewConversation}
           className="gap-2"
           variant="default"
         >
@@ -131,7 +142,7 @@ export const ConversationSidebar = () => {
                 <button
                   key={conversation.id}
                   type="button"
-                  onClick={() => selectConversation(conversation.id)}
+                  onClick={() => handleConversationClick(conversation.id)}
                   className={cn(
                     'group relative flex w-full flex-col gap-1.5 rounded-lg border px-3 py-2.5 text-left transition-all duration-200',
                     isSelected
