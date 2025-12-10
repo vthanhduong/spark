@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 
 import type { ChatMessage } from '../../stores/chat.store';
 import { LLMMessageRenderer } from './LLMMessageRenderer';
+import { CachedMessage } from './CachedMessage';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -74,7 +75,7 @@ export const MessageList = memo(
                   <ContextMenu>
                     <ContextMenuTrigger asChild>
                       <div className={`max-w-full rounded-3xl px-5 py-2 text-sm shadow-sm ${bubbleClass}`}>
-                        <LLMMessageRenderer content={message.content} isStreaming={false} />
+                        <CachedMessage messageId={message.id} content={message.content} isStreaming={false} />
                       </div>
                     </ContextMenuTrigger>
                     <ContextMenuContent className="w-48">
@@ -91,7 +92,7 @@ export const MessageList = memo(
                   </ContextMenu>
                   ) : (
                     <div className={`max-w-full rounded-2xl px-2.5 py-1 text-sm shadow-sm ${bubbleClass}`}>
-                        <LLMMessageRenderer content={message.content} isStreaming={false} />
+                        <CachedMessage messageId={message.id} content={message.content} isStreaming={false} />
                     </div>
                   )
                 }
