@@ -8,7 +8,7 @@ import { useSessionStore } from '../../../auth/stores/session.store';
 import { ContextEditorPanel } from './ContextEditorPanel';
 import { LoginDialog } from './LoginDialog';
 import { MessageComposer } from './MessageComposer';
-import { MessageList } from './MessageList';
+import { VirtualizedMessageList } from './VirtualizedMessageList';
 import { MessagePanelHeader } from './MessagePanelHeader';
 import { SettingsDialog } from './SettingsDialog';
 
@@ -303,7 +303,7 @@ export const MessagePanel = () => {
         </div>
       )}
 
-      <MessageList
+      <VirtualizedMessageList
         messages={messages}
         streamingMessage={streamingMessage}
         isStreaming={isStreaming}
