@@ -31,9 +31,13 @@ export const MessageComposer = ({
     adjustTextareaHeight();
   }, [value, adjustTextareaHeight]);
 
+  // Auto-focus textarea when streaming completes
   useEffect(() => {
     if (!isStreaming) {
-      textareaRef.current?.focus();
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
     }
   }, [isStreaming]);
 
