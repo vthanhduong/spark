@@ -112,7 +112,9 @@ export const VirtualizedMessageList = memo(
                   isAuthenticated ? (
                   <ContextMenu>
                     <ContextMenuTrigger asChild>
-                      <div className={`max-w-full rounded-3xl px-5 py-2 text-sm shadow-sm ${bubbleClass}`}>
+                      <div 
+                        className={`max-w-full rounded-3xl px-5 py-2 text-sm shadow-sm select-none ${bubbleClass}`}
+                      >
                         <CachedMessage messageId={message.id} content={message.content} isStreaming={false} />
                       </div>
                     </ContextMenuTrigger>
@@ -129,7 +131,7 @@ export const VirtualizedMessageList = memo(
                     </ContextMenuContent>
                   </ContextMenu>
                   ) : (
-                    <div className={`max-w-full rounded-2xl px-2.5 py-1 text-sm shadow-sm ${bubbleClass}`}>
+                    <div className={`max-w-full rounded-2xl px-2.5 py-1 text-sm shadow-sm select-none ${bubbleClass}`}>
                         <CachedMessage messageId={message.id} content={message.content} isStreaming={false} />
                     </div>
                   )
