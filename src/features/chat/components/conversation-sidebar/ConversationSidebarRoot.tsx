@@ -164,15 +164,6 @@ export const ConversationSidebar = () => {
                             type="button"
                             className="h-6 w-6 rounded-sm opacity-0 transition-opacity group-hover:opacity-100 text-muted-foreground hover:bg-accent hover:text-foreground inline-flex items-center justify-center"
                             onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                            }}
-                            onPointerDown={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                            }}
-                            onMouseDown={(event) => {
-                              event.preventDefault();
                               event.stopPropagation();
                             }}
                           >
@@ -183,14 +174,9 @@ export const ConversationSidebar = () => {
                           align="end" 
                           className="w-40"
                           onClick={(event) => event.stopPropagation()}
-                          onPointerDown={(event) => event.stopPropagation()}
                         >
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive cursor-pointer"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setDeleteTarget(conversation);
-                            }}
                             onSelect={(event) => {
                               event.preventDefault();
                               setDeleteTarget(conversation);
