@@ -14,7 +14,7 @@ import remarkGfm from "remark-gfm";
 import { createHighlighterCore } from "shiki/core";
 import { createOnigurumaEngine } from "shiki/engine/oniguruma";
 import "./LLMMessageRenderer.css";
-import { useState, memo } from "react";
+import { useState, memo, useEffect, useRef } from "react";
 
 // Lazy load languages on-demand to improve initial load performance
 // Only import the most common languages by default
@@ -54,16 +54,35 @@ const codeToHtmlOptions: CodeToHtmlOptions = {
 
 const CodeBlock: LLMOutputComponent = ({ blockMatch }) => {
   const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   const { html, code } = useCodeBlockToHtml({
     markdownCodeBlock: blockMatch.output,
     highlighter,
     codeToHtmlOptions,
   });
 
+  // Cleanup timeout on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleCopy = () => {
     navigator.clipboard.writeText(code).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      // Clear existing timeout to prevent memory leak
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      // Store new timeout
+      timeoutRef.current = setTimeout(() => {
+        setCopied(false);
+        timeoutRef.current = null;
+      }, 2000);
     });
   };
   

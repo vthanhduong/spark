@@ -5,6 +5,10 @@ import { DEFAULT_PERSONALITY_SLUG, PERSONALITY_OPTIONS, type PersonalityOption }
 import { SSEService } from '../services/sse.service';
 import type { GuestMessageHistoryEntry, SSEEndEvent, SSEStartEvent } from '../services/sse.service';
 
+// Memory management: Limit messages in memory to prevent performance issues
+// Messages are virtualized in UI, but we still limit total in-memory count
+const MAX_MESSAGES_IN_MEMORY = 200;
+
 export type AuthMode = 'guest' | 'authenticated';
 
 export interface ConversationSummary {
@@ -264,12 +268,20 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
                 `/api/conversations/${selectedConversationId}/messages?limit=8&cursor=${nextMessageCursor}`
             );
             const mapped = response.messages.map(mapApiMessage);
-            set((state) => ({
-                messages: [...mapped, ...state.messages],
-                hasMoreMessages: response.has_more,
-                nextMessageCursor: response.next_cursor,
-                isLoadingOlderMessages: false,
-            }));
+            set((state) => {
+                // Apply memory limit: keep only most recent messages
+                const newMessages = [...mapped, ...state.messages];
+                const limitedMessages = newMessages.length > MAX_MESSAGES_IN_MEMORY
+                    ? newMessages.slice(-MAX_MESSAGES_IN_MEMORY)
+                    : newMessages;
+                
+                return {
+                    messages: limitedMessages,
+                    hasMoreMessages: response.has_more,
+                    nextMessageCursor: response.next_cursor,
+                    isLoadingOlderMessages: false,
+                };
+            });
         } catch (error) {
             console.error('Không thể tải thêm tin nhắn', error);
             set({ isLoadingOlderMessages: false });
@@ -307,20 +319,28 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
             set({ sseService: service });
         }
 
-        set((current) => ({
-            messages: [
+        set((current) => {
+            // Apply memory limit when adding new messages
+            const newMessages: ChatMessage[] = [
                 ...current.messages,
                 {
                     id: tempId,
-                    sender: 'user',
+                    sender: 'user' as const,
                     content: trimmed,
                     createdAt: now,
                 },
-            ],
-            isStreaming: true,
-            streamingMessage: '',
-            pendingUserMessageTempId: tempId,
-        }));
+            ];
+            const limitedMessages = newMessages.length > MAX_MESSAGES_IN_MEMORY
+                ? newMessages.slice(-MAX_MESSAGES_IN_MEMORY)
+                : newMessages;
+            
+            return {
+                messages: limitedMessages,
+                isStreaming: true,
+                streamingMessage: '',
+                pendingUserMessageTempId: tempId,
+            };
+        });
 
         let createdConversationId: string | null = null;
         let activeConversationId = state.selectedConversationId ?? null;
@@ -354,19 +374,27 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
             const aiMessageId = event.ai_message_id || `ai-${Date.now()}`;
             const content = event.content.trim();
             const timestamp = new Date().toISOString();
-            set((current) => ({
-                messages: [
+            set((current) => {
+                // Apply memory limit when adding AI response
+                const newMessages: ChatMessage[] = [
                     ...current.messages,
                     {
                         id: aiMessageId,
-                        sender: 'ai',
+                        sender: 'ai' as const,
                         content,
                         createdAt: timestamp,
                     },
-                ],
-                isStreaming: false,
-                streamingMessage: '',
-            }));
+                ];
+                const limitedMessages = newMessages.length > MAX_MESSAGES_IN_MEMORY
+                    ? newMessages.slice(-MAX_MESSAGES_IN_MEMORY)
+                    : newMessages;
+                
+                return {
+                    messages: limitedMessages,
+                    isStreaming: false,
+                    streamingMessage: '',
+                };
+            });
             if (event.conversation_id) {
                 activeConversationId = event.conversation_id;
             }
