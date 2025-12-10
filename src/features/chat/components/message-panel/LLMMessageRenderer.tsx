@@ -16,18 +16,11 @@ import { createOnigurumaEngine } from "shiki/engine/oniguruma";
 import "./LLMMessageRenderer.css";
 import { useState, memo } from "react";
 
-// Only load common languages to improve performance
+// Lazy load languages on-demand to improve initial load performance
+// Only import the most common languages by default
 import javascript from "shiki/langs/javascript.mjs";
 import typescript from "shiki/langs/typescript.mjs";
-import python from "shiki/langs/python.mjs";
-import jsx from "shiki/langs/jsx.mjs";
-import tsx from "shiki/langs/tsx.mjs";
-import css from "shiki/langs/css.mjs";
-import html from "shiki/langs/html.mjs";
 import json from "shiki/langs/json.mjs";
-import markdown from "shiki/langs/markdown.mjs";
-import bash from "shiki/langs/bash.mjs";
-import cpp from "shiki/langs/cpp.mjs";
 
 import githubDark from "shiki/themes/github-dark.mjs";
 
@@ -42,20 +35,13 @@ const MarkdownComponent: LLMOutputComponent = ({ blockMatch }) => {
 };
 
 // -------Step 2: Create a code block component (optimized)-------
+// Start with minimal language support for faster initial load
 const highlighter = loadHighlighter(
   createHighlighterCore({
     langs: [
       javascript,
       typescript,
-      python,
-      jsx,
-      tsx,
-      css,
-      html,
       json,
-      markdown,
-      bash,
-      cpp
     ],
     themes: [githubDark],
     engine: createOnigurumaEngine(import('shiki/wasm')),
