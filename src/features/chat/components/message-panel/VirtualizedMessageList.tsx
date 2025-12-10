@@ -2,8 +2,8 @@ import { memo, type RefObject, useMemo } from 'react';
 import { toast } from 'sonner';
 
 import type { ChatMessage } from '../../stores/chat.store';
-import { LLMMessageRenderer } from './LLMMessageRenderer';
 import { CachedMessage } from './CachedMessage';
+import { ThrottledStreamingMessage } from './ThrottledStreamingMessage';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -122,7 +122,7 @@ export const VirtualizedMessageList = memo(
           {isStreaming && streamingMessage && (
             <div className="flex justify-start">
               <div className="max-w-full rounded-3xl bg-muted/80 px-5 py-3 text-sm text-foreground">
-                <LLMMessageRenderer content={streamingMessage} isStreaming />
+                <ThrottledStreamingMessage content={streamingMessage} isStreaming />
               </div>
             </div>
           )}
