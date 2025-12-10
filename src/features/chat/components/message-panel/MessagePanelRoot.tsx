@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useShallow } from 'zustand/react/shallow';
 
 import { ApiError } from '@/lib/api';
 import { useChatStore } from '../../stores/chat.store';
@@ -14,33 +15,78 @@ import { SettingsDialog } from './SettingsDialog';
 const SCROLL_BOTTOM_THRESHOLD = 150;
 
 export const MessagePanel = () => {
-  const authMode = useChatStore((state) => state.authMode);
-  const personalities = useChatStore((state) => state.personalities);
-  const selectedPersonalitySlug = useChatStore((state) => state.selectedPersonalitySlug);
-  const setSelectedPersonalitySlug = useChatStore((state) => state.setSelectedPersonalitySlug);
-  const conversationDetail = useChatStore((state) => state.conversationDetail);
-  const messages = useChatStore((state) => state.messages);
-  const streamingMessage = useChatStore((state) => state.streamingMessage);
-  const isStreaming = useChatStore((state) => state.isStreaming);
-  const sendMessage = useChatStore((state) => state.sendMessage);
-  const deleteMessagesFromIndex = useChatStore((state) => state.deleteMessagesFromIndex);
-  const loadOlderMessages = useChatStore((state) => state.loadOlderMessages);
-  const hasMoreMessages = useChatStore((state) => state.hasMoreMessages);
-  const isLoadingOlderMessages = useChatStore((state) => state.isLoadingOlderMessages);
-  const contextEditorValue = useChatStore((state) => state.contextEditorValue);
-  const updateContextEditorValue = useChatStore((state) => state.updateContextEditorValue);
-  const updateContextOverride = useChatStore((state) => state.updateContextOverride);
-  const updateConversationPersonality = useChatStore((state) => state.updateConversationPersonality);
-  const setAuthMode = useChatStore((state) => state.setAuthMode);
-  const selectConversation = useChatStore((state) => state.selectConversation);
-  const clearMessages = useChatStore((state) => state.clearMessages);
+  // Group related state selectors to reduce subscriptions
+  const {
+    authMode,
+    personalities,
+    selectedPersonalitySlug,
+    conversationDetail,
+    messages,
+    streamingMessage,
+    isStreaming,
+    hasMoreMessages,
+    isLoadingOlderMessages,
+    contextEditorValue,
+  } = useChatStore(
+    useShallow((state) => ({
+      authMode: state.authMode,
+      personalities: state.personalities,
+      selectedPersonalitySlug: state.selectedPersonalitySlug,
+      conversationDetail: state.conversationDetail,
+      messages: state.messages,
+      streamingMessage: state.streamingMessage,
+      isStreaming: state.isStreaming,
+      hasMoreMessages: state.hasMoreMessages,
+      isLoadingOlderMessages: state.isLoadingOlderMessages,
+      contextEditorValue: state.contextEditorValue,
+    }))
+  );
 
-  const sessionUser = useSessionStore((state) => state.user);
-  const sessionStatus = useSessionStore((state) => state.status);
-  const sessionError = useSessionStore((state) => state.error);
-  const login = useSessionStore((state) => state.login);
-  const logout = useSessionStore((state) => state.logout);
-  const fetchSession = useSessionStore((state) => state.fetchSession);
+  // Group action selectors separately (these don't change)
+  const {
+    setSelectedPersonalitySlug,
+    sendMessage,
+    deleteMessagesFromIndex,
+    loadOlderMessages,
+    updateContextEditorValue,
+    updateContextOverride,
+    updateConversationPersonality,
+    setAuthMode,
+    selectConversation,
+    clearMessages,
+  } = useChatStore(
+    useShallow((state) => ({
+      setSelectedPersonalitySlug: state.setSelectedPersonalitySlug,
+      sendMessage: state.sendMessage,
+      deleteMessagesFromIndex: state.deleteMessagesFromIndex,
+      loadOlderMessages: state.loadOlderMessages,
+      updateContextEditorValue: state.updateContextEditorValue,
+      updateContextOverride: state.updateContextOverride,
+      updateConversationPersonality: state.updateConversationPersonality,
+      setAuthMode: state.setAuthMode,
+      selectConversation: state.selectConversation,
+      clearMessages: state.clearMessages,
+    }))
+  );
+
+  // Group session state
+  const { sessionUser, sessionStatus, sessionError } = useSessionStore(
+    useShallow((state) => ({
+      sessionUser: state.user,
+      sessionStatus: state.status,
+      sessionError: state.error,
+    }))
+  );
+
+  // Group session actions
+  const { login, logout, fetchSession, updateDisplayName } = useSessionStore(
+    useShallow((state) => ({
+      login: state.login,
+      logout: state.logout,
+      fetchSession: state.fetchSession,
+      updateDisplayName: state.updateDisplayName,
+    }))
+  );
 
   const userRole = sessionUser?.role;
 
@@ -192,8 +238,6 @@ export const MessagePanel = () => {
       toast.error('Không thể đăng xuất.');
     }
   };
-
-  const updateDisplayName = useSessionStore((state) => state.updateDisplayName);
 
   const handleSaveSettings = async (value: string) => {
     const trimmed = value.trim();
