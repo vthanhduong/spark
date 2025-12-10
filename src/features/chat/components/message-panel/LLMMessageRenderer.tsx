@@ -11,8 +11,8 @@ import { throttleBasic, useLLMOutput, type LLMOutputComponent } from "@llm-ui/re
 import parseHtml from "html-react-parser";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { getHighlighterCore } from "shiki/core";
-import getWasm from "shiki/wasm";
+import { createHighlighterCore } from "shiki/core";
+import { createOnigurumaEngine } from "shiki/engine/oniguruma";
 import "./LLMMessageRenderer.css";
 import { useState, memo } from "react";
 
@@ -43,7 +43,7 @@ const MarkdownComponent: LLMOutputComponent = ({ blockMatch }) => {
 
 // -------Step 2: Create a code block component (optimized)-------
 const highlighter = loadHighlighter(
-  getHighlighterCore({
+  createHighlighterCore({
     langs: [
       javascript,
       typescript,
@@ -58,7 +58,7 @@ const highlighter = loadHighlighter(
       cpp
     ],
     themes: [githubDark],
-    loadWasm: getWasm,
+    engine: createOnigurumaEngine(import('shiki/wasm')),
   }),
 );
 
