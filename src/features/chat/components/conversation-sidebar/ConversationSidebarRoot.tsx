@@ -160,21 +160,39 @@ export const ConversationSidebar = () => {
                     {authMode === 'authenticated' && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button
+                          <button
                             type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100 text-muted-foreground hover:text-foreground"
-                            onClick={(event) => event.stopPropagation()}
+                            className="h-6 w-6 rounded-sm opacity-0 transition-opacity group-hover:opacity-100 text-muted-foreground hover:bg-accent hover:text-foreground inline-flex items-center justify-center"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                            }}
+                            onPointerDown={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                            }}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                            }}
                           >
                             <EllipsisVertical className="size-3.5" />
-                          </Button>
+                          </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuContent 
+                          align="end" 
+                          className="w-40"
+                          onClick={(event) => event.stopPropagation()}
+                          onPointerDown={(event) => event.stopPropagation()}
+                        >
                           <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
+                            className="text-destructive focus:text-destructive cursor-pointer"
                             onClick={(event) => {
                               event.stopPropagation();
+                              setDeleteTarget(conversation);
+                            }}
+                            onSelect={(event) => {
+                              event.preventDefault();
                               setDeleteTarget(conversation);
                             }}
                           >
