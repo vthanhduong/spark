@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { EllipsisVertical, Loader2 } from 'lucide-react';
+import { EllipsisVertical, Loader2, MessageSquarePlus } from 'lucide-react';
 import { toast } from 'sonner';
+import { useShallow } from 'zustand/react/shallow';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -26,14 +27,34 @@ import { useChatStore, type ConversationSummary } from '../../stores/chat.store'
 import { useSessionStore } from '@/features/auth/stores/session.store';
 
 export const ConversationSidebar = () => {
-  const conversations = useChatStore((state) => state.conversations);
-  const hasMore = useChatStore((state) => state.hasMoreConversations);
-  const isLoading = useChatStore((state) => state.isLoadingConversations);
-  const fetchConversations = useChatStore((state) => state.fetchConversations);
-  const selectConversation = useChatStore((state) => state.selectConversation);
-  const selectedConversationId = useChatStore((state) => state.selectedConversationId);
-  const authMode = useChatStore((state) => state.authMode);
-  const deleteConversation = useChatStore((state) => state.deleteConversation);
+  const {
+    conversations,
+    hasMore,
+    isLoading,
+    selectedConversationId,
+    authMode,
+  } = useChatStore(
+    useShallow((state) => ({
+      conversations: state.conversations,
+      hasMore: state.hasMoreConversations,
+      isLoading: state.isLoadingConversations,
+      selectedConversationId: state.selectedConversationId,
+      authMode: state.authMode,
+    }))
+  );
+
+  const {
+    fetchConversations,
+    selectConversation,
+    deleteConversation,
+  } = useChatStore(
+    useShallow((state) => ({
+      fetchConversations: state.fetchConversations,
+      selectConversation: state.selectConversation,
+      deleteConversation: state.deleteConversation,
+    }))
+  );
+
   const isAuthenticated = useSessionStore((state) => state.status) === "authenticated";
   const [deleteTarget, setDeleteTarget] = useState<ConversationSummary | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -70,26 +91,37 @@ export const ConversationSidebar = () => {
   };
 
   return (
-    <aside className="shrink-0 border-r border-border bg-background/40 flex flex-col">
-      <div className="flex flex-row items-center gap-x-2 p-4">
-        <img src="/logo.png" className="w-10 h-10"/>
-        <span className="font-semibold">spark by vthanhduong</span>
+    <aside className="shrink-0 border-r border-border bg-background/40 flex flex-col h-full">
+      {/* Header with logo */}
+      <div className="flex flex-row items-center gap-x-2 p-4 border-b border-border/50">
+        <img src="/logo.png" className="w-10 h-10" alt="Logo"/>
+        <span className="font-semibold text-foreground">spark by vthanhduong</span>
       </div>
-      <div className="flex items-center justify-between px-4 py-3">
-        <div>
-          <h2 className="text-lg font-semibold">Hội thoại</h2>
+
+      {/* Section header with new conversation button */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
+        <div className="flex-1">
+          <h2 className="text-lg font-semibold text-foreground">Hội thoại</h2>
           <p className="text-xs text-muted-foreground">Danh sách hội thoại của bạn!</p>
         </div>
-        <Button size="sm" onClick={() => selectConversation(null)}>
+        <Button
+          size="sm"
+          onClick={() => selectConversation(null)}
+          className="gap-2"
+          variant="default"
+        >
+          <MessageSquarePlus className="size-4" />
           Mới
         </Button>
       </div>
+
+      {/* Scrollable conversation list */}
       <ScrollArea
-        className="flex-1"
+        className="flex-1 min-h-0"
         viewportRef={viewportRef}
         onViewportScroll={handleScroll}
       >
-        <div className="space-y-2 px-2 py-3">
+        <div className="space-y-1.5 px-3 py-2">
           {
             isAuthenticated ? (
               <>
@@ -101,14 +133,19 @@ export const ConversationSidebar = () => {
                   type="button"
                   onClick={() => selectConversation(conversation.id)}
                   className={cn(
-                    'group relative flex w-full flex-col gap-1 rounded-xl border px-3 py-3 text-left transition',
+                    'group relative flex w-full flex-col gap-1.5 rounded-lg border px-3 py-2.5 text-left transition-all duration-200',
                     isSelected
-                      ? 'border-primary bg-primary/10 text-foreground'
-                      : 'border-transparent bg-muted/60 text-muted-foreground hover:border-border/70 hover:bg-muted/80',
+                      ? 'border-primary/50 bg-primary/10 shadow-sm'
+                      : 'border-transparent bg-muted/40 hover:border-border/70 hover:bg-muted/70 hover:shadow-sm',
                   )}
                 >
-                  <div className="flex items-start justify-between gap-2 text-sm font-semibold text-foreground">
-                    <span className="line-clamp-1 group-hover:text-foreground">{conversation.title}</span>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className={cn(
+                      "line-clamp-1 text-sm font-medium transition-colors",
+                      isSelected ? "text-foreground" : "text-foreground/90 group-hover:text-foreground"
+                    )}>
+                      {conversation.title}
+                    </span>
                     {authMode === 'authenticated' && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -116,10 +153,10 @@ export const ConversationSidebar = () => {
                             type="button"
                             variant="ghost"
                             size="icon-sm"
-                            className="text-muted-foreground hover:text-foreground"
+                            className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100 text-muted-foreground hover:text-foreground"
                             onClick={(event) => event.stopPropagation()}
                           >
-                            <EllipsisVertical className="size-4" />
+                            <EllipsisVertical className="size-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-40">
@@ -136,27 +173,36 @@ export const ConversationSidebar = () => {
                       </DropdownMenu>
                     )}
                   </div>
-                  <p className="line-clamp-2 text-xs text-muted-foreground">
+                  <p className={cn(
+                    "line-clamp-2 text-xs transition-colors",
+                    isSelected ? "text-muted-foreground" : "text-muted-foreground/80"
+                  )}>
                     {conversation.last_message_preview || 'Chưa có tin nhắn nào.'}
                   </p>
                 </button>
               );
             })}
             {isLoading && (
-              <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+              <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
-                Đang tải...
+                <span>Đang tải...</span>
               </div>
             )}
             {!isLoading && conversations.length === 0 && (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                Chưa có hội thoại nào. Hãy bắt đầu một cuộc trò chuyện mới!
+              <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+                <MessageSquarePlus className="size-12 text-muted-foreground/40 mb-3" />
+                <p className="text-sm font-medium text-foreground">Chưa có hội thoại nào</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Hãy bắt đầu một cuộc trò chuyện mới!
+                </p>
               </div>
             )}
             </>
           ) : (
-            <div>
-              Để có thể lưu được lịch sử trò chuyện và tinh chỉnh nâng cao, hãy đăng nhập hoặc đăng ký ngay!
+            <div className="flex flex-col items-center justify-center py-8 px-4 text-center space-y-3">
+              <div className="text-sm text-muted-foreground">
+                Để có thể lưu được lịch sử trò chuyện và tinh chỉnh nâng cao, hãy đăng nhập hoặc đăng ký ngay!
+              </div>
             </div>
           )
           }
