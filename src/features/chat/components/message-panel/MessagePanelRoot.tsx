@@ -26,6 +26,7 @@ export const MessagePanel = () => {
     isStreaming,
     hasMoreMessages,
     isLoadingOlderMessages,
+    isLoadingMessages,
     contextEditorValue,
   } = useChatStore(
     useShallow((state) => ({
@@ -38,6 +39,7 @@ export const MessagePanel = () => {
       isStreaming: state.isStreaming,
       hasMoreMessages: state.hasMoreMessages,
       isLoadingOlderMessages: state.isLoadingOlderMessages,
+      isLoadingMessages: state.isLoadingMessages,
       contextEditorValue: state.contextEditorValue,
     }))
   );
@@ -311,6 +313,7 @@ export const MessagePanel = () => {
         onScroll={handleScroll}
         onDeleteFromIndex={deleteMessagesFromIndex}
         isLoadingOlderMessages={isLoadingOlderMessages}
+        isLoadingMessages={isLoadingMessages}
         isAuthenticated={isAuthenticated}
       />
 

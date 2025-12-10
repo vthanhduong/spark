@@ -1,5 +1,6 @@
 import { memo, type RefObject, useMemo } from 'react';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 
 import type { ChatMessage } from '../../stores/chat.store';
 import { CachedMessage } from './CachedMessage';
@@ -20,6 +21,7 @@ interface VirtualizedMessageListProps {
   onScroll: (event: React.UIEvent<HTMLDivElement>) => void;
   onDeleteFromIndex: (index: number) => void;
   isLoadingOlderMessages: boolean;
+  isLoadingMessages: boolean;
   isAuthenticated: boolean;
 }
 
@@ -35,6 +37,7 @@ export const VirtualizedMessageList = memo(
     onScroll,
     onDeleteFromIndex,
     isLoadingOlderMessages,
+    isLoadingMessages,
     isAuthenticated,
   }: VirtualizedMessageListProps) => {
     
@@ -66,14 +69,29 @@ export const VirtualizedMessageList = memo(
         viewportClassName="h-full"
       >
         <div className="flex min-h-full flex-col gap-4 px-4 py-6">
-          {messages.length === 0 && !isStreaming && (
+          {/* Loading state when switching conversations */}
+          {isLoadingMessages && messages.length === 0 && (
+            <div className="flex h-[50vh] items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="size-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Đang tải hội thoại...</p>
+              </div>
+            </div>
+          )}
+          
+          {/* Empty state */}
+          {!isLoadingMessages && messages.length === 0 && !isStreaming && (
             <div className="flex h-[30vh] items-center justify-center text-center text-4xl font-semibold text-muted-foreground">
               <p>Chào bạn, Hãy cùng trò chuyện ngay!</p>
             </div>
           )}
+          
+          {/* Loading older messages indicator */}
           {isLoadingOlderMessages && (
             <div className="text-center text-xs text-muted-foreground">Đang tải thêm tin nhắn...</div>
           )}
+          
+          {/* Virtualization info */}
           {visibleMessages.length < messages.length && (
             <div className="text-center text-xs text-muted-foreground">
               Đang hiển thị {visibleMessages.length} tin nhắn gần nhất (Tổng: {messages.length})

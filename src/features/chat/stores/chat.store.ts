@@ -218,8 +218,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
             return;
         }
 
+        // Immediately clear messages and show loading state
         set({
             selectedConversationId: conversationId,
+            messages: [],
+            conversationDetail: null,
             isLoadingMessages: true,
             streamingMessage: '',
             isStreaming: false,
