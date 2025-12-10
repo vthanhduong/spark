@@ -113,7 +113,22 @@ export const VirtualizedMessageList = memo(
                   <ContextMenu>
                     <ContextMenuTrigger asChild>
                       <div 
-                        className={`max-w-full rounded-3xl px-5 py-2 text-sm shadow-sm select-none ${bubbleClass}`}
+                        className={`max-w-full rounded-3xl px-5 py-2 text-sm shadow-sm ${bubbleClass}`}
+                        style={{
+                          WebkitTouchCallout: 'none', // Disable iOS callout on long press
+                        }}
+                        onContextMenu={(e) => {
+                          // Prevent text selection when opening context menu
+                          const target = e.currentTarget;
+                          target.style.userSelect = 'none';
+                          target.style.webkitUserSelect = 'none';
+                          
+                          // Re-enable selection after context menu closes
+                          setTimeout(() => {
+                            target.style.userSelect = 'text';
+                            target.style.webkitUserSelect = 'text';
+                          }, 300);
+                        }}
                       >
                         <CachedMessage messageId={message.id} content={message.content} isStreaming={false} />
                       </div>
@@ -131,7 +146,12 @@ export const VirtualizedMessageList = memo(
                     </ContextMenuContent>
                   </ContextMenu>
                   ) : (
-                    <div className={`max-w-full rounded-2xl px-2.5 py-1 text-sm shadow-sm select-none ${bubbleClass}`}>
+                    <div 
+                      className={`max-w-full rounded-2xl px-2.5 py-1 text-sm shadow-sm ${bubbleClass}`}
+                      style={{
+                        WebkitTouchCallout: 'none',
+                      }}
+                    >
                         <CachedMessage messageId={message.id} content={message.content} isStreaming={false} />
                     </div>
                   )
