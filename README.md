@@ -5,7 +5,7 @@
 ![Vite](https://img.shields.io/badge/Vite-5.x-yellow)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
 
-**Spark AI Web UI** is the official open-source web interface for **Spark AI**. This project provides a modern, high-performance, and user-friendly frontend for interacting with the Spark AI LLM, built with the latest web technologies.
+**Spark AI Web UI** is the official open-source web interface for **Spark AI**. This project provides a modern, high-performance, and user-friendly frontend for interacting with the Spark AI LLM, built with the latest web technologies.x
 
 ## 📖 Overview
 
